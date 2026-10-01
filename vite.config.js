@@ -6,9 +6,9 @@ import { defineConfig } from "vite";
 const repositoryRoot = dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
-  base: "/github-repository-template/",
+  base: "/babylon-lite-dungeon-crawl/",
   plugins: [react()],
-  root: "project-name",
+  root: "cryptbound",
   server: {
     fs: {
       allow: [repositoryRoot],

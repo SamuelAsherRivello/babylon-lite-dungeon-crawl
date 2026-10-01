@@ -2,10 +2,15 @@
 
 # Node and Vite output.
 node_modules/
-/project-name/dist/
+/cryptbound/dist/
 
 # Local configuration. Commit examples only, never credentials.
 .env
 .env.*
 # Playwright CLI output (may contain credentials)
 .playwright-cli/
+
+# Local WebGPU preview captures and browser profile.
+/.preview-profile/
+/cryptbound-preview.png
+/cryptbound-game-preview.png

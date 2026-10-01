@@ -1,0 +1,412 @@
+:root {
+  color-scheme: dark;
+  --gutter-color: #181a1a;
+  --surface-color: #100e17;
+  --text-color: #e8dec4;
+  --border-color: #65583e;
+  --viewport-padding: 10px;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+}
+
+#root {
+  height: 100%;
+}
+
+#browser_surface {
+  position: relative;
+  width: 100%;
+  height: 100dvh;
+  overflow: hidden;
+  background-color: var(--gutter-color);
+  background-image: url("./assets/gutter-pattern.webp");
+  background-blend-mode: multiply;
+  background-size: 200px 200px;
+}
+
+#viewport {
+  position: absolute;
+  overflow: hidden;
+  container-type: size;
+  background: var(--surface-color);
+  box-shadow: inset 0 0 0 1px var(--border-color);
+}
+
+#content_layer {
+  position: absolute;
+  inset: 0;
+  overflow: auto;
+}
+
+.babylon_content {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background: #ffffff;
+  color: #111111;
+}
+
+.babylon_canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  image-rendering: pixelated;
+}
+
+/* Cryptbound: fixed landscape, source-size pixel cells and a compact medieval HUD. */
+#viewport { background: #100e17; }
+#content_layer { overflow: hidden; background: #100e17; color: #e8dec4; font-family: ui-monospace, "Cascadia Mono", monospace; }
+.cryptbound_menu,.cryptbound_game { position:absolute; inset:0; box-sizing:border-box; padding:3.75cqw; background:#100e17; color:#e8dec4; image-rendering:pixelated; container-type:size; }
+.cryptbound_menu { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px; }
+.cryptbound_menu h1 { margin:0; color:#e4b85e; font-size:clamp(24px,5cqi,54px); letter-spacing:.18em; }
+.cryptbound_menu p { color:#9b988d; margin:0 0 16px; }
+.save_slots { display:flex; gap:12px; max-width:100%; }
+.save_slots button,.game_options button,.choice_overlay button { border:2px solid #65583e; background:#211d24; color:#e8dec4; padding:12px; font:inherit; cursor:pointer; }
+.save_slots button { min-width:150px; display:grid; gap:8px; text-align:left; }
+.save_slots button:hover,.choice_overlay button:hover,.game_options button:hover { border-color:#e4b85e; }
+.save_slots span { color:#a9a18e; font-size:12px; }
+.game_top { height:15cqh; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #514632; color:#e4b85e; font-size:3.75cqw; letter-spacing:.08em; }
+.game_center { display:flex; gap:0; justify-content:center; height:78cqh; padding:1cqh 0; box-sizing:border-box; }
+.babylon_world { width:80cqw; height:100%; position:relative; overflow:hidden; background:#100e17; }
+.babylon_world_canvas { width:100%; height:100%; display:block; image-rendering:pixelated; }
+.babylon_world_message { position:absolute; inset:0; display:grid; place-items:center; padding:10%; text-align:center; background:#100e17; color:#e4b85e; font-size:3cqw; }
+.player_panel { width:20cqw; align-self:center; font-size:2.5cqw; color:#c6bca9; }
+.player_panel h2,.player_panel h3 { color:#e4b85e; margin:2cqh 0 1cqh; text-transform:uppercase; font-size:2.5cqw; }
+.player_panel div { line-height:1.55; }
+.player_panel b { float:right; }
+.game_bottom { position:absolute; bottom:1cqh; left:3.75cqw; right:3.75cqw; }
+.game_message { min-height:5cqh; color:#e4b85e; font-size:2.6cqw; }
+.save_error { color:#ff8b6e; }
+.game_controls { display:flex; justify-content:space-between; align-items:end; }
+.dungeon_dpad { display:grid; grid-template-columns:repeat(3,6cqw); gap:.5cqw; margin-top:2cqh; }
+.dungeon_dpad button { width:6cqw; height:5cqh; border:1px solid #65583e; background:#211d24; color:#e8dec4; font-size:3cqw; touch-action:manipulation; }
+.dungeon_dpad button:nth-child(5) { color:#e4b85e; }
+.game_options { display:flex; justify-content:center; gap:2cqw; align-items:center; font-size:2.4cqw; }
+.game_options select { margin-left:1cqw; background:#211d24; color:#e8dec4; border:1px solid #65583e; padding:1.5cqh; font-size:2.5cqw; }
+.game_options button { padding:1.5cqh; font-size:2.4cqw; }
+.choice_overlay { position:absolute; inset:0; display:grid; place-items:center; background:#100e17dd; }
+.choice_overlay section { display:flex; flex-wrap:wrap; justify-content:center; gap:8px; max-width:90%; padding:18px; background:#211d24; border:2px solid #e4b85e; }
+.choice_overlay h2,.choice_overlay p { width:100%; text-align:center; color:#e4b85e; font-size:14px; }
+@media(max-width:700px) { .cryptbound_game { padding:3.75cqw; } .player_panel { width:20cqw; } }
+
+.babylon_scene_border {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  box-sizing: border-box;
+  border: 5px solid orange;
+  pointer-events: none;
+}
+
+.babylon_content_message {
+  display: grid;
+  place-items: center;
+  box-sizing: border-box;
+  padding: 1rem;
+  text-align: center;
+  font: 500 14px/1.5 system-ui, sans-serif;
+}
+
+.gutter {
+  position: absolute;
+  overflow: auto;
+  min-width: 0;
+  min-height: 0;
+  overflow-wrap: anywhere;
+}
+
+.layout_error {
+  padding: 20px;
+  color: var(--text-color);
+  background: var(--gutter-color);
+}
+
+#ui_layer {
+  position: absolute;
+  inset: 0;
+  box-sizing: border-box;
+  --ui-padding-x: min(var(--viewport-padding), 5cqw);
+  --ui-padding-y: min(var(--viewport-padding), 5cqh);
+  padding: var(--ui-padding-y) var(--ui-padding-x);
+  z-index: 1;
+  pointer-events: none;
+}
+
+.corner {
+  position: absolute;
+  color: var(--text-color);
+  --corner-line-height: 1.15;
+  pointer-events: auto;
+  max-width: 48%;
+  max-height: 48%;
+  overflow: auto;
+  overflow-wrap: anywhere;
+}
+
+.corner_top_left {
+  top: var(--ui-padding-y);
+  left: var(--ui-padding-x);
+}
+
+.corner_top_right {
+  top: var(--ui-padding-y);
+  right: var(--ui-padding-x);
+}
+
+.corner_bottom_left {
+  bottom: var(--ui-padding-y);
+  left: var(--ui-padding-x);
+}
+
+.corner_bottom_right {
+  right: var(--ui-padding-x);
+  bottom: var(--ui-padding-y);
+}
+
+.corner_top_right,
+.corner_bottom_right {
+  text-align: right;
+}
+
+.corner a,
+.corner a:visited {
+  color: var(--text-color);
+}
+
+.corner-body,
+.corner-title {
+  color: var(--text-color);
+  line-height: var(--corner-line-height, 1.4);
+}
+
+.corner-title {
+  font-size: 10pt;
+  font-weight: 700;
+}
+
+.corner-body {
+  font-size: 8pt;
+  font-weight: 400;
+}
+
+.corner button { border:1px solid var(--border-color); padding:.25em .5em; background:#211d24; color:var(--text-color); font:inherit; cursor:pointer; }
+.corner button:hover { border-color:#e4b85e; color:#e4b85e; }
+
+.babylon_viewport_info {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  position: absolute;
+  left: 50%;
+  bottom: 9px;
+  transform: translateX(-50%);
+  color: #e0694b;
+  text-align: center;
+  white-space: nowrap;
+  pointer-events: auto;
+}
+
+.babylon_viewport_logo {
+  align-self: center;
+  display: block;
+  width: 32px;
+  height: 32px;
+}
+
+.babylon_viewport_info .corner-title,
+.babylon_viewport_info .corner-body {
+  color: inherit;
+  text-align: center;
+}
+
+.babylon_viewport_info_button {
+  appearance: none;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.babylon_viewport_info_button:hover {
+  text-decoration: underline;
+}
+
+.babylon_viewport_info_button:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+}
+
+.corner a:hover,
+.corner_option:hover {
+  color: #000000;
+}
+
+.corner_option {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  color: var(--text-color);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0;
+  font-family: inherit;
+  font-size: 8pt;
+  font-weight: 400;
+  line-height: var(--corner-line-height, 1.4);
+}
+
+.corner_option:focus-visible {
+  outline: 2px solid var(--text-color);
+  outline-offset: 3px;
+}
+
+.corner_option input {
+  margin: 0;
+  appearance: none;
+  font-size: inherit;
+  width: 0.8em;
+  height: 0.8em;
+  padding: 0;
+  border: 1px solid var(--text-color);
+  border-radius: 2px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.corner_option input:not(:checked) {
+  border-color: var(--text-color);
+  background: transparent;
+}
+
+.corner_option input:checked {
+  border-color: var(--text-color);
+  background:
+    linear-gradient(45deg, transparent 43%, var(--surface-color) 43% 53%, transparent 53%),
+    linear-gradient(-45deg, transparent 54%, var(--surface-color) 54% 64%, transparent 64%),
+    var(--text-color);
+}
+
+.dialog_backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: grid;
+  place-items: center;
+  background: rgb(0 0 0 / 18%);
+  pointer-events: auto;
+}
+
+.dialog {
+  display: flex;
+  flex-direction: column;
+  width: fit-content;
+  min-width: min(280px, calc(var(--project-viewport-width) * 0.8));
+  max-width: calc(var(--project-viewport-width) * 0.8);
+  max-height: calc(var(--project-viewport-height) * 0.8);
+  box-sizing: border-box;
+  color: var(--text-color);
+  background: var(--surface-color);
+  border: 1px solid var(--border-color);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 25%);
+}
+
+.dialog_header,
+.dialog_footer {
+  display: flex;
+  flex: 0 0 52px;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.dialog_header h2 {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.dialog_close {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-size: 1.4rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.dialog_body {
+  flex: 0 1 auto;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 24px;
+  overflow: auto;
+}
+
+.dialog_footer {
+  border-top: 1px solid var(--border-color);
+  border-bottom: 0;
+}
+
+.dialog_options {
+  display: grid;
+  gap: 10px;
+  line-height: 1.15;
+}
+
+.dialog_option {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  color: var(--text-color);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0;
+  font: inherit;
+  line-height: 1.15;
+}
+
+.dialog_option:focus-visible {
+  outline: 2px solid var(--text-color);
+  outline-offset: 3px;
+}
+
+.dialog_option:hover {
+  color: #000000;
+}
+
+.dialog_option input {
+  margin: 0;
+  appearance: none;
+  width: 0.9em;
+  height: 0.9em;
+  padding: 0;
+  border: 2px solid var(--text-color);
+  border-radius: 2px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.dialog_option input:not(:checked) {
+  border-color: var(--text-color);
+  background: transparent;
+}
+
+.dialog_option input:checked {
+  border-color: var(--text-color);
+  background:
+    linear-gradient(45deg, transparent 43%, var(--surface-color) 43% 53%, transparent 53%),
+    linear-gradient(-45deg, transparent 54%, var(--surface-color) 54% 64%, transparent 64%),
+    var(--text-color);
+}
