@@ -23,7 +23,7 @@ Use assets formatted for Tiled. I'll provide folders to copy from and use for th
 ## Getting Started
 
 1. Install Node.js and run `npm install` from the repository root.
-2. Run `npm run dev` and open the localhost URL Vite prints.
+2. Run `npm run dev` and open the localhost URL Vite prints, or run `npm run dev:open` to launch a silent browser session for testing (`?mute=1`).
 3. Run `npm run build` to create the production site in `cryptbound/dist/`.
 
 ## Controls

@@ -1,13 +1,15 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   addSprite2D, centerSprite2DView, createEngine, createGridSpriteAtlas, createSprite2DLayer,
-  createSpriteRenderer, disposeEngine, disposeSpriteAtlas, disposeSpriteRenderer,
-  loadTexture2D, registerSpriteRenderer, releaseTexture, startEngine, updateSprite2D,
+  createSpriteRenderer, createSurface, disposeEngine, disposeSpriteAtlas, disposeSpriteRenderer, disposeSurface,
+  loadTexture2D, registerSpriteRenderer, releaseTexture, resizeSurface, startEngine, updateSprite2D,
 } from "@babylonjs/lite";
-import { wallFrameAt } from "../game/dungeon.js";
+import { getCameraCenter, getWorldCellAtScreenPosition, getWorldCellScreenCenter, getWorldScreenPosition, WorldRender } from "./world/WorldRender.js";
+import { getRenderedTileCssSize } from "./world/zoom.js";
 import { pixelPerfectOptions } from "./babylon/config.js";
 import { getInitializationMessage } from "./babylon/initialization.js";
-import { getRenderResolutionDimensions } from "./babylon/render-resolution.js";
+import { findWorldTooltipPosition } from "./world/tooltip-placement.js";
+import { resourceNames } from "../game/dungeon.js";
 
 const texturePaths = {
   tiles: `${import.meta.env.BASE_URL}assets/Tilesets/Tileset_Dungeon.png`,
@@ -17,23 +19,116 @@ const texturePaths = {
   items: `${import.meta.env.BASE_URL}assets/Tilesets/Items_Static.png`,
 };
 const clear = { r: 0.06, g: 0.05, b: 0.09, a: 1 };
+let sharedEnginePromise = null;
+let sharedEngineRecord = null;
+let surfaceReferences = 0;
+const sharedTextures = new Map();
+const resourceIcons = { health: "♥", stamina: "◈", offense: "⚔", defense: "⛨", mana: "✦", xp: "★" };
 
-export function BabylonWorld({ campaign, zoom }) {
-  const hostRef = useRef(null); const canvasRef = useRef(null); const sceneRef = useRef(null); const latestRef = useRef({ campaign, zoom });
+function EnemyResourceRows({ resources }) {
+  return <div className="resource_list enemy_tooltip_resources">{resourceNames.map((name) => {
+    const value = resources[name]; const fill = value.currentMax > 0 ? Math.max(0, Math.min(100, value.current / value.currentMax * 100)) : 0;
+    return <div key={name} className={`resource resource_${name}`} aria-label={`${name}: ${value.current} of ${value.currentMax}`}><span>{resourceIcons[name]}</span><div className="resource_track"><i style={{ width: `${fill}%` }} /><b style={{ left: "100%" }} />{name === "xp" && <em>{String(value.level ?? 1).padStart(2, "0")}</em>}</div></div>;
+  })}</div>;
+}
+
+async function acquireSharedSurface(canvas) {
+  if (!sharedEnginePromise) {
+    sharedEnginePromise = createEngine(canvas, pixelPerfectOptions.engine).then((engine) => {
+      sharedEngineRecord = { engine, primaryCanvas: canvas, started: false };
+      return sharedEngineRecord;
+    }).catch((error) => { sharedEnginePromise = null; throw error; });
+  }
+  const record = await sharedEnginePromise;
+  const surface = canvas === record.primaryCanvas ? record.engine : createSurface(record.engine, canvas);
+  surfaceReferences++;
+  return { ...record, surface, isPrimary: surface === record.engine };
+}
+
+function releaseSharedSurface(surface) {
+  if (surface && surface !== sharedEngineRecord?.engine) disposeSurface(surface);
+  surfaceReferences = Math.max(0, surfaceReferences - 1);
+  if (!surfaceReferences && sharedEngineRecord) {
+    disposeEngine(sharedEngineRecord.engine);
+    sharedEngineRecord = null; sharedEnginePromise = null;
+  }
+}
+
+async function acquireSharedTexture(engine, path) {
+  let entry = sharedTextures.get(path);
+  if (!entry) { entry = { refs: 0, promise: loadTexture2D(engine, path, pixelPerfectOptions.texture) }; sharedTextures.set(path, entry); }
+  entry.refs++;
+  try { return await entry.promise; }
+  catch (error) { entry.refs--; if (!entry.refs) sharedTextures.delete(path); throw error; }
+}
+
+function releaseSharedTexture(path) {
+  const entry = sharedTextures.get(path); if (!entry) return;
+  entry.refs--;
+  if (entry.refs <= 0) { entry.promise.then(releaseTexture).catch(() => {}); sharedTextures.delete(path); }
+}
+
+export function BabylonWorld({ campaign, zoom = 1, minimap = false, camera = "center", mouseInteraction = false, floatingFeedback = [], selectedCell = null, onSelectedCellChange, onZoom }) {
+  const hostRef = useRef(null); const canvasRef = useRef(null); const sceneRef = useRef(null); const latestRef = useRef({ campaign, zoom, minimap, camera });
+  const cameraCenterRef = useRef({ seed: campaign.floor.seed, x: campaign.player.x, y: campaign.player.y });
+  const mouseDownRef = useRef(false);
+  const pointerRef = useRef(null);
+  const selectedCellRef = useRef(selectedCell);
   const [message, setMessage] = useState("Preparing the crypt…");
-  latestRef.current = { campaign, zoom };
+  const [tooltipPosition, setTooltipPosition] = useState(null);
+  const tooltipRef = useRef(null);
+  latestRef.current = { campaign, zoom, minimap, camera };
+  selectedCellRef.current = selectedCell;
+  const cellSizeAt = (rect) => {
+    const canvas = canvasRef.current;
+    const backingPixelsPerCssPixel = canvas?.width > 0 && rect.width > 0 ? canvas.width / rect.width : window.devicePixelRatio || 1;
+    return getRenderedTileCssSize({ zoom: typeof zoom === "number" ? zoom : 1, devicePixelRatio: window.devicePixelRatio || 1, backingPixelsPerCssPixel });
+  };
+  const getViewCenter = (rect, state = campaign) => {
+    const tileCss = cellSizeAt(rect); const visibleWidth = rect.width / tileCss; const visibleHeight = rect.height / tileCss;
+    if (cameraCenterRef.current.seed !== state.floor.seed) cameraCenterRef.current = { seed: state.floor.seed, x: state.player.x, y: state.player.y };
+    const center = getCameraCenter({ mode: camera, player: state.player, previousCenter: cameraCenterRef.current, visibleWidth, visibleHeight });
+    cameraCenterRef.current = { seed: state.floor.seed, ...center };
+    return center;
+  };
+  const targetKindAt = (x, y) => {
+    const entity = campaign.floor.entities.find((entry) => entry.x === x && entry.y === y);
+    return entity?.kind === "enemy" ? "enemy" : entity && ["item", "potion", "chest", "stairs"].includes(entity.kind) ? "item" : campaign.floor.map[y]?.[x] === 0 ? "valid" : "invalid";
+  };
+  const targetAtScreenPosition = (point, rect) => {
+    const cellSize = cellSizeAt(rect);
+    const center = getViewCenter(rect);
+    const { x, y } = getWorldCellAtScreenPosition({ screenX: point.x, screenY: point.y, center, viewportWidth: rect.width, viewportHeight: rect.height, tileCssSize: cellSize });
+    return { x, y, kind: targetKindAt(x, y), ...getWorldCellScreenCenter({ x, y, center, viewportWidth: rect.width, viewportHeight: rect.height, tileCssSize: cellSize }), size: cellSize };
+  };
+  const targetAt = (event) => {
+    if (!mouseInteraction) return null;
+    const rect = event.currentTarget.getBoundingClientRect();
+    const point = { x: event.clientX - rect.left, y: event.clientY - rect.top };
+    pointerRef.current = point;
+    return targetAtScreenPosition(point, rect);
+  };
+  const selectCell = (target, pressed = false, sprint = false) => {
+    const next = target && { ...target, pressed, sprint };
+    selectedCellRef.current = next;
+    onSelectedCellChange?.(next);
+  };
+  const pointerMove = (event) => { if (!mouseDownRef.current) selectCell(targetAt(event)); };
+  const pointerDown = (event) => { const target = targetAt(event); if (!target) return; event.preventDefault(); mouseDownRef.current = true; selectCell(target, true, event.button === 2); };
+  const pointerUp = (event) => { mouseDownRef.current = false; selectCell(targetAt(event)); };
+  const pointerLeave = () => { if (!mouseDownRef.current) { pointerRef.current = null; selectCell(null); } };
 
   useEffect(() => {
     const host = hostRef.current; const canvas = canvasRef.current;
-    let cancelled = false; let engine = null; let renderer = null; let atlases = []; let textures = {}; let observers = [];
+    let cancelled = false; let engine = null; let surface = null; let renderer = null; let atlases = []; let textures = {}; let acquiredTexturePaths = []; let observers = [];
     const setup = async () => {
       try {
         if (!navigator.gpu) throw new Error("WebGPU is not available in this browser.");
-        engine = await createEngine(canvas, pixelPerfectOptions.engine);
-        if (cancelled) { disposeEngine(engine); engine = null; return; }
+        const acquired = await acquireSharedSurface(canvas); engine = acquired.engine; surface = acquired.surface;
+        if (cancelled) { releaseSharedSurface(surface); surface = null; return; }
         for (const [key, path] of Object.entries(texturePaths)) {
-          const texture = await loadTexture2D(engine, path, pixelPerfectOptions.texture);
-          if (cancelled) { releaseTexture(texture); return; }
+          const texture = await acquireSharedTexture(engine, path); acquiredTexturePaths.push(path);
+          if (cancelled) { acquiredTexturePaths.forEach(releaseSharedTexture); acquiredTexturePaths = []; releaseSharedSurface(surface); surface = null; return; }
           textures[key] = texture;
         }
         const tileAtlas = createGridSpriteAtlas(textures.tiles, { cellWidthPx: 32, cellHeightPx: 32, columns: 12, rows: 9, pivot: [0.5, 0.5] });
@@ -44,57 +139,106 @@ export function BabylonWorld({ campaign, zoom }) {
         const tileLayer = createSprite2DLayer(tileAtlas, { pivot: [0.5, 0.5] });
         const actorLayers = Object.fromEntries(Object.entries(actorAtlases).map(([key, atlas]) => [key, createSprite2DLayer(atlas, { pivot: [0.5, 0.5] })]));
         const itemLayer = createSprite2DLayer(itemAtlas, { pivot: [0.5, 0.5] });
-        const tileHandles = [];
-        for (let y = 0; y < campaign.floor.height; y++) for (let x = 0; x < campaign.floor.width; x++) tileHandles.push(addSprite2D(tileLayer, { positionPx: [x * 32 + 16, y * 32 + 16], sizePx: [32, 32], frame: 26 }));
+        const model = WorldRender.Render({ map: campaign.floor.map, entities: campaign.floor.entities, player: campaign.player, view: minimap ? "minimap" : "game", detail: minimap ? "simplified" : "full" });
+        const tileHandles = model.terrain.map(({ worldX, worldY, frame }) => addSprite2D(tileLayer, { positionPx: [worldX, worldY], sizePx: [32, 32], frame }));
         const hero = addSprite2D(actorLayers.hero, { positionPx: [16,16], sizePx: [32,32], frame: 0 });
         const actors = { rat: [], skeleton: [] };
         for (const key of Object.keys(actors)) for (let i = 0; i < 40; i++) actors[key].push(addSprite2D(actorLayers[key], { positionPx: [-10000,-10000], sizePx: [32,32], frame: 0 }));
         const items = Array.from({ length: 40 }, (_, i) => addSprite2D(itemLayer, { positionPx: [-10000,-10000], sizePx: [32,32], frame: i % 9 }));
         const viewLayers = [tileLayer, itemLayer, actorLayers.rat, actorLayers.skeleton, actorLayers.hero];
-        renderer = createSpriteRenderer(engine, { layers: viewLayers, clear: true, clearValue: clear });
+        renderer = createSpriteRenderer(surface, { layers: viewLayers, clear: true, clearValue: clear });
         registerSpriteRenderer(renderer);
         const draw = () => {
-          const state = latestRef.current.campaign; const zoomNow = latestRef.current.zoom;
-          const preset = getRenderResolutionDimensions(320, 180, zoomNow);
-          const scale = preset.width / 320;
+          const state = latestRef.current.campaign;
+          const { zoom: zoomNow, minimap: isMinimap } = latestRef.current;
+          const scale = typeof zoomNow === "number" ? zoomNow : 1;
           const renderWidth = canvas.width || canvas.clientWidth || host.clientWidth || 320;
           const renderHeight = canvas.height || canvas.clientHeight || host.clientHeight || 180;
+          const world = WorldRender.Render({ map: state.floor.map, entities: state.floor.entities, player: state.player, view: isMinimap ? "minimap" : "game", detail: isMinimap ? "simplified" : "full" });
+          const mapWidth = world.width * 32;
+          const mapHeight = world.height * 32;
+          const mapScale = Math.min(renderWidth / mapWidth, renderHeight / mapHeight) * 0.92;
+          const viewScale = isMinimap ? mapScale : scale * (window.devicePixelRatio || 1);
+          const rect = host.getBoundingClientRect(); const cameraCenter = isMinimap ? { x: world.width / 2, y: world.height / 2 } : getViewCenter(rect, state);
+          const centerX = isMinimap ? mapWidth / 2 : cameraCenter.x * 32 + 16;
+          const centerY = isMinimap ? mapHeight / 2 : cameraCenter.y * 32 + 16;
           viewLayers.forEach((layer) => {
-            layer.view.zoom = scale;
-            centerSprite2DView(layer.view, state.player.x * 32 + 16, state.player.y * 32 + 16, renderWidth, renderHeight);
+            layer.view.zoom = viewScale;
+            centerSprite2DView(layer.view, centerX, centerY, renderWidth, renderHeight);
           });
-          let index = 0;
-          for (let y = 0; y < state.floor.height; y++) for (let x = 0; x < state.floor.width; x++) {
-            const frame = state.floor.map[y][x] === 1 ? wallFrameAt(state.floor, x, y) : 26;
-            updateSprite2D(tileHandles[index++], { frame });
-          }
+          world.terrain.forEach((tile, index) => updateSprite2D(tileHandles[index], { positionPx: [tile.worldX, tile.worldY], frame: tile.frame }));
           updateSprite2D(hero, { positionPx: [state.player.x * 32 + 16, state.player.y * 32 + 16] });
-          const byKind = { rat: state.floor.entities.filter((e) => e.kind === "enemy" && e.name !== "Skeleton"), skeleton: state.floor.entities.filter((e) => e.kind === "enemy" && e.name === "Skeleton") };
-          for (const key of Object.keys(actors)) actors[key].forEach((sprite, i) => { const actor = byKind[key][i]; updateSprite2D(sprite, { positionPx: actor ? [actor.x * 32 + 16, actor.y * 32 + 16] : [-10000,-10000] }); });
-          const pickups = state.floor.entities.filter((e) => e.kind === "item" || e.kind === "chest" || e.kind === "stairs" || e.kind === "discovery");
-          items.forEach((sprite, i) => { const entity = pickups[i]; const frame = entity?.kind === "item" ? 2 : entity?.kind === "chest" ? 0 : entity?.kind === "stairs" ? 1 : 8; updateSprite2D(sprite, { frame, positionPx: entity ? [entity.x * 32 + 16, entity.y * 32 + 16] : [-10000,-10000] }); });
+          const byKind = { rat: world.actors.filter((actor) => actor.kind === "rat"), skeleton: world.actors.filter((actor) => actor.kind === "skeleton") };
+          for (const key of Object.keys(actors)) actors[key].forEach((sprite, i) => { const actor = byKind[key][i]; updateSprite2D(sprite, { positionPx: actor ? [actor.worldX, actor.worldY] : [-10000,-10000] }); });
+          items.forEach((sprite, i) => { const entity = world.objects[i]; const frame = entity?.kind === "item" ? 2 : entity?.kind === "chest" ? 0 : entity?.kind === "stairs" ? 1 : entity?.kind === "potion" ? (entity.resource === "health" ? 3 : 4) : 8; updateSprite2D(sprite, { frame, positionPx: entity ? [entity.worldX, entity.worldY] : [-10000,-10000] }); });
         };
         sceneRef.current = { draw };
-        draw(); await startEngine(engine);
+        resizeSurface(surface); draw();
+        if (acquired.isPrimary && sharedEngineRecord && !sharedEngineRecord.started) { await startEngine(engine); sharedEngineRecord.started = true; }
         if (cancelled) return;
-        const observer = new ResizeObserver(draw); observer.observe(host); observers.push(observer);
+        const observer = new ResizeObserver(() => { resizeSurface(surface); draw(); }); observer.observe(host); observers.push(observer);
         window.addEventListener("resize", draw); observers.push({ disconnect: () => window.removeEventListener("resize", draw) });
         setMessage("");
       } catch (error) {
         console.error("Cryptbound Babylon Lite initialization failed:", error);
         if (renderer) { disposeSpriteRenderer(renderer); renderer = null; }
         atlases.forEach((atlas) => disposeSpriteAtlas(atlas)); atlases = [];
-        Object.values(textures).forEach((texture) => releaseTexture(texture)); textures = {};
-        if (engine) { disposeEngine(engine); engine = null; }
+        acquiredTexturePaths.forEach(releaseSharedTexture); acquiredTexturePaths = []; textures = {};
+        if (surface) { releaseSharedSurface(surface); surface = null; } engine = null;
         if (!cancelled) setMessage(getInitializationMessage(Boolean(navigator.gpu), error));
       }
     };
     queueMicrotask(() => { if (!cancelled) void setup(); });
     return () => {
       cancelled = true; observers.forEach((observer) => observer.disconnect()); sceneRef.current = null;
-      if (renderer) disposeSpriteRenderer(renderer); atlases.forEach((atlas) => disposeSpriteAtlas(atlas)); Object.values(textures).forEach((texture) => releaseTexture(texture)); if (engine) disposeEngine(engine);
+      if (renderer) disposeSpriteRenderer(renderer); atlases.forEach((atlas) => disposeSpriteAtlas(atlas)); acquiredTexturePaths.forEach(releaseSharedTexture); if (surface) releaseSharedSurface(surface);
     };
   }, []);
-  useEffect(() => { sceneRef.current?.draw(); }, [campaign, zoom]);
-  return <div className="babylon_world" ref={hostRef} data-renderer="babylon-lite" data-content-style="2d"><canvas ref={canvasRef} className="babylon_world_canvas" aria-label="Pixel-perfect dungeon map"/>{message && <div role="status" className="babylon_world_message">{message}</div>}</div>;
+  useEffect(() => {
+    if (!mouseInteraction) return undefined;
+    const releaseMouse = () => {
+      if (!mouseDownRef.current) return;
+      mouseDownRef.current = false;
+      pointerRef.current = null;
+      if (selectedCellRef.current) selectCell(selectedCellRef.current);
+    };
+    window.addEventListener("mouseup", releaseMouse);
+    return () => window.removeEventListener("mouseup", releaseMouse);
+  }, [mouseInteraction]);
+  useEffect(() => {
+    sceneRef.current?.draw();
+    const rect = hostRef.current?.getBoundingClientRect();
+    if (mouseInteraction && !mouseDownRef.current && pointerRef.current && rect) selectCell(targetAtScreenPosition(pointerRef.current, rect));
+  }, [campaign, zoom, minimap, camera, mouseInteraction]);
+  const rect = hostRef.current?.getBoundingClientRect();
+  const reticleCellSize = rect ? cellSizeAt(rect) : 32;
+  const reticleCenter = rect && selectedCell ? getWorldCellScreenCenter({ x: selectedCell.x, y: selectedCell.y, center: getViewCenter(rect), viewportWidth: rect.width, viewportHeight: rect.height, tileCssSize: reticleCellSize }) : null;
+  const reticleStyle = selectedCell && rect ? {
+    left: selectedCell.pressed ? reticleCenter.left : selectedCell.left,
+    top: selectedCell.pressed ? reticleCenter.top : selectedCell.top,
+    width: selectedCell.pressed ? reticleCellSize : selectedCell.size,
+    height: selectedCell.pressed ? reticleCellSize : selectedCell.size,
+  } : null;
+  const feedbackRect = hostRef.current?.getBoundingClientRect();
+  const feedbackCenter = feedbackRect && !minimap ? getViewCenter(feedbackRect) : null;
+  const feedbackCellSize = feedbackRect ? cellSizeAt(feedbackRect) : 32;
+  const hoveredEnemy = mouseInteraction && selectedCell && !selectedCell.pressed ? campaign.floor.entities.find((entry) => entry.kind === "enemy" && entry.x === selectedCell.x && entry.y === selectedCell.y) : null;
+  useLayoutEffect(() => {
+    if (!hoveredEnemy || !selectedCell) { setTooltipPosition(null); return undefined; }
+    const update = () => {
+      const host = hostRef.current; const panel = tooltipRef.current;
+      if (!host || !panel) return;
+      const rect = host.getBoundingClientRect(); const size = cellSizeAt(rect); const center = getViewCenter(rect);
+      const cellRect = (x, y) => { const point = getWorldCellScreenCenter({ x, y, center, viewportWidth: rect.width, viewportHeight: rect.height, tileCssSize: size }); return { left: rect.left + point.left - size / 2, top: rect.top + point.top - size / 2, width: size, height: size }; };
+      const placement = findWorldTooltipPosition(rect, { width: panel.offsetWidth, height: panel.offsetHeight }, [cellRect(hoveredEnemy.x, hoveredEnemy.y), cellRect(campaign.player.x, campaign.player.y)]);
+      setTooltipPosition(placement);
+    };
+    update(); const observer = new ResizeObserver(update);
+    if (hostRef.current) observer.observe(hostRef.current);
+    if (tooltipRef.current) observer.observe(tooltipRef.current);
+    window.addEventListener("resize", update);
+    return () => { observer.disconnect(); window.removeEventListener("resize", update); };
+  }, [hoveredEnemy, selectedCell, campaign.player.x, campaign.player.y, zoom, camera]);
+  const offsets = new Map();
+  return <div className={`babylon_world${minimap ? " babylon_world--minimap" : ""}`} ref={hostRef} data-renderer="babylon-lite" data-content-style="2d" onMouseMove={mouseInteraction ? pointerMove : undefined} onMouseLeave={mouseInteraction ? pointerLeave : undefined} onMouseDown={mouseInteraction ? pointerDown : undefined} onMouseUp={mouseInteraction ? pointerUp : undefined} onWheel={mouseInteraction ? (event) => { event.preventDefault(); onZoom?.(event.deltaY < 0 ? 1 : -1); } : undefined} onContextMenu={mouseInteraction ? (event) => event.preventDefault() : undefined}><canvas ref={canvasRef} className="babylon_world_canvas" aria-label={minimap ? "Dungeon minimap" : "Pixel-perfect dungeon map"}/>{!minimap && feedbackCenter && floatingFeedback.map((effect) => { const key = `${effect.x},${effect.y}`; const index = offsets.get(key) ?? 0; offsets.set(key, index + 1); const position = getWorldScreenPosition({ x: effect.x, y: effect.y, center: feedbackCenter, viewportWidth: feedbackRect.width, viewportHeight: feedbackRect.height, tileCssSize: feedbackCellSize }); const zoomScale = typeof zoom === "number" ? zoom : 1; return <span key={effect.id} className={`world_floating_text world_floating_text--${effect.color}`} style={{ left: position.left, top: position.top - index * 12 * zoomScale, fontSize: `${14 * zoomScale}px`, "--world-floating-travel": `${11 * zoomScale}px` }} aria-hidden="true">{effect.text}</span>; })}{hoveredEnemy && !minimap && <section ref={tooltipRef} className="enemy_world_tooltip" aria-label={`${hoveredEnemy.name} information`} style={{ left: tooltipPosition?.left ?? -10000, top: tooltipPosition?.top ?? -10000, visibility: tooltipPosition ? "visible" : "hidden" }}><div className="enemy_tooltip_section enemy_tooltip_portrait"><h2>PORTRAIT</h2><img src={hoveredEnemy.name === "Skeleton" ? texturePaths.skeleton : texturePaths.rat} alt="" /></div><div className="enemy_tooltip_section enemy_tooltip_resource_panel"><h2>RESOURCES</h2><EnemyResourceRows resources={hoveredEnemy.resources} /></div></section>}{mouseInteraction && selectedCell && reticleStyle && <i className={`grid_reticle ${targetKindAt(selectedCell.x, selectedCell.y)}`} style={reticleStyle} />}{message && <div role="status" className="babylon_world_message">{message}</div>}</div>;
 }

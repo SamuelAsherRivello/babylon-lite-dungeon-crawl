@@ -71,6 +71,9 @@ testing. Human players may enable sound in the normal experience.
   longer used.
 - When changing React UI, check that its JSX class names and IDs match the
   styles, and remove obsolete selectors left behind by the change.
+- When editing CSS, prefer explicit new values for the requested layout over
+  calculations derived from previous values. Use `calc()` only when a real
+  relationship between live dimensions is required.
 - The page structure supports keeping the full HUD visible inside the viewport
   during fullscreen. Gutters are not visible in fullscreen, so custom gutter UI
   may be added only as secondary UI. Keep all primary UI in React and within

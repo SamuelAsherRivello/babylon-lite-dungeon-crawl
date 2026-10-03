@@ -17,9 +17,6 @@ export const pixelPerfectOptions = Object.freeze({
   }),
 });
 
-export const logicalResolution = Object.freeze({ width: 320, height: 180 });
-export const showcaseTileSize = 32;
-
 export function getRenderingPolicy({ renderer, style }) {
   if (renderer !== "babylon-lite") return "renderer-specific";
   return style === "2d" ? "pixel-perfect" : style === "3d" ? "performance-scaled-3d" : "renderer-specific";

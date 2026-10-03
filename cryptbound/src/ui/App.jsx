@@ -1,17 +1,13 @@
-import versionText from "../../../version.txt?raw";
+import { useMemo, useState } from "react";
 import { BrowserSurface } from "./BrowserSurface.jsx";
-import { defaultLayout } from "./layout.js";
-function AppCorner({ position, children }) { return <div className={`corner corner_${position}`}>{children}</div>; }
+import { classifyPlatform, layoutForPlatform } from "./layout.js";
+import { LayoutContext } from "./layout-context.js";
 
 export function App({ content = null, gutters = {} }) {
-  const version = versionText.trim().replace(/^version=/, "").replace(/^v/, "");
-  const toggleFullscreen = async () => {
-    try { if (document.fullscreenElement) await document.exitFullscreen(); else await document.documentElement.requestFullscreen(); } catch { /* Unsupported fullscreen does not affect play. */ }
-  };
-  return <BrowserSurface layout={defaultLayout} gutters={gutters} ui={<>
-    <AppCorner position="top_left"><div id="project_title" className="corner-body">Cryptbound</div></AppCorner>
-    <AppCorner position="top_right"><a className="corner-body" href="https://github.com/SamuelAsherRivello/babylon-lite-dungeon-crawl" target="_blank" rel="noopener noreferrer">Source ↗</a></AppCorner>
-    <AppCorner position="bottom_left"><section id="config" aria-label="Game settings"><div className="corner-title">Settings</div><button className="corner-body" onClick={toggleFullscreen}>Fullscreen</button></section></AppCorner>
-    <AppCorner position="bottom_right"><section id="stats" aria-label="Version"><div className="corner-title">Version</div><div id="version" className="corner-body">v{version}</div></section></AppCorner>
-  </>}>{content}</BrowserSurface>;
+  const platform = classifyPlatform({ userAgentDataMobile: navigator.userAgentData?.mobile, userAgent: navigator.userAgent });
+  const canOverride = platform === "pc" && import.meta.env.DEV;
+  const [developerAspect, setDeveloperAspect] = useState(null);
+  const layout = layoutForPlatform(platform, canOverride ? developerAspect : null);
+  const context = useMemo(() => ({ platform, orientation: layout.orientation, canOverride, setDeveloperAspect }), [platform, layout.orientation, canOverride]);
+  return <LayoutContext.Provider value={context}><BrowserSurface layout={layout} gutters={gutters}>{content}</BrowserSurface></LayoutContext.Provider>;
 }

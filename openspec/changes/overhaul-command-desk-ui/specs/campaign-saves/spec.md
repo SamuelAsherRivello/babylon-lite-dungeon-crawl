@@ -1,0 +1,58 @@
+## MODIFIED Requirements
+
+### Requirement: Provide exactly three independent save slots
+The game SHALL expose exactly three independent local campaigns under `3 Saved Games`. Player-facing campaign wording SHALL use Saved Game instead of save slot, with realm and XP-count summaries for occupied games. Campaigns SHALL remain independent and require no account or network access.
+
+#### Scenario: Choose a slot
+- **WHEN** the main menu opens
+- **THEN** it displays 3 Saved Games with realm/XP summaries or a new-game state
+
+#### Scenario: Keep slots independent
+- **WHEN** one Saved Game is updated
+- **THEN** the other two campaigns retain their data unchanged
+
+### Requirement: Autosave and resume complete runs
+The selected Saved Game SHALL autosave after each accepted time tick and restore its complete campaign after reload, including Dungeon Level, persistent Difficulty, realm/map, entities, player position, time, attributes/resources, XP, Inventory, equipment, ability bindings, objectives, counters, and Log. Save & Return to Main Menu SHALL persist the latest committed state before returning.
+
+#### Scenario: Resume after reload
+- **WHEN** the player reloads and chooses an occupied Saved Game
+- **THEN** the same complete committed game state, including Dungeon Level and Difficulty, is restored without retaining a transient drag preview
+
+#### Scenario: Save after a turn
+- **WHEN** a move, attack, ability, or slot drag advances time
+- **THEN** the resulting state is saved after its enemy phase
+
+## ADDED Requirements
+
+### Requirement: Restore application view preferences
+Zoom, Camera, and desired Fullscreen SHALL be stored in localStorage and restored on load/refresh independently of the selected Saved Game. Invalid or unavailable preferences SHALL use defaults 1, Center, and windowed while keeping play usable. Developer aspect preview SHALL not be persisted as a player preference.
+
+#### Scenario: Reload selected view preferences
+- **WHEN** Zoom 2 and Camera Screen were stored before refresh
+- **THEN** the app restores those settings without requiring a campaign save
+
+#### Scenario: Invalid preference record
+- **WHEN** preference data is missing, malformed, or out of range
+- **THEN** supported defaults are used without preventing a new or resumed game
+
+### Requirement: Restore fullscreen intent through browser permissions
+The app SHALL distinguish stored fullscreen preference from actual browser fullscreen. A stored enabled preference SHALL request entry when a permitted user gesture is available after load. Fullscreen events, user exits, and failures SHALL synchronize the actual control state without falsely reporting entry or interrupting play.
+
+#### Scenario: Browser blocks automatic entry after refresh
+- **WHEN** fullscreen preference is enabled but the browser requires a gesture
+- **THEN** the preference is retained, the control reflects windowed reality, and entry is requested on the next permitted interaction
+
+#### Scenario: Exit with browser controls
+- **WHEN** the player exits fullscreen through browser controls
+- **THEN** actual state and stored preference update to windowed
+
+### Requirement: Migrate supported legacy campaigns without deletion
+Supported version-1 campaigns SHALL migrate to the new attribute and item schema without silently deleting the original saved data. Existing realm, position, entities, Time, XP, and supported items SHALL be retained. A migration failure SHALL mark the Saved Game invalid while leaving its original stored content intact.
+
+#### Scenario: Resume a legacy campaign
+- **WHEN** a valid previous campaign is selected
+- **THEN** its old equipment and progression are mapped into the new model and the resulting game can be saved and resumed
+
+#### Scenario: Preserve a failed migration
+- **WHEN** a legacy campaign cannot be migrated
+- **THEN** its data remains stored and the menu clearly marks it as unavailable to resume

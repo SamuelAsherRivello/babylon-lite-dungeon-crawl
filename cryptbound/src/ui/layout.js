@@ -1,19 +1,29 @@
 // Change these presets to update the template's supported aspect ratios in one place.
 // Layout dimensions are CSS pixels; renderer resolution and DPR belong to a future integration.
-export const aspectRatioPresets = Object.freeze({ landscape: Object.freeze({ width: 16, height: 9, label: "16:9" }) });
+export const aspectRatioPresets = Object.freeze({ landscape: Object.freeze({ width: 16, height: 9, label: "16:9" }), portrait: Object.freeze({ width: 9, height: 16, label: "9:16" }) });
 
 export const defaultLayout = Object.freeze({
   orientation: "landscape",
   ...aspectRatioPresets.landscape,
 });
 
+const mobileUserAgent = /Android|iPhone|iPad|iPod|Mobile|Windows Phone/i;
+export function classifyPlatform({ userAgentDataMobile, userAgent = "" } = {}) {
+  if (userAgentDataMobile === true || mobileUserAgent.test(userAgent)) return "mobile";
+  return "pc";
+}
+export function layoutForPlatform(platform, developerAspect = null) {
+  const orientation = platform === "mobile" ? "portrait" : developerAspect === "portrait" ? "portrait" : "landscape";
+  return Object.freeze({ orientation, ...aspectRatioPresets[orientation] });
+}
+
 export function validateLayout(layout) {
   const { width, height, orientation } = layout;
   if (![width, height].every((value) => Number.isFinite(value) && value > 0)) {
     throw new Error("Viewport width and height must be finite positive numbers; for example, 16 and 9.");
   }
-  if (orientation !== "landscape" || width <= height) {
-    throw new Error("Cryptbound uses a fixed landscape viewport: width must be greater than height.");
+  if (!((orientation === "landscape" && width > height) || (orientation === "portrait" && height > width))) {
+    throw new Error("Cryptbound layout dimensions must match its named orientation.");
   }
   if (!Number.isFinite(width / height) || width / height <= 0) {
     throw new Error("Viewport ratio is outside the supported numeric range; use smaller ratio dimensions.");

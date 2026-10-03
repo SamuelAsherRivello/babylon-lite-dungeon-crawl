@@ -4,9 +4,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:open": "vite --open /babylon-lite-dungeon-crawl/?mute=1",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "node --test --test-isolation=none cryptbound/test/page.test.mjs cryptbound/test/content.test.mjs cryptbound/test/game.test.mjs"
+    "test": "node --test --test-isolation=none cryptbound/test/page.test.mjs cryptbound/test/content.test.mjs cryptbound/test/game.test.mjs cryptbound/test/audio.test.mjs cryptbound/test/tooltip.test.mjs"
   },
   "dependencies": {
     "@babylonjs/lite": "1.32.0",

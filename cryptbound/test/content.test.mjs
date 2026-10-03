@@ -3,8 +3,7 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import { contentConfig, getRenderingPolicy, pixelPerfectOptions } from '../src/content/babylon/config.js';
 import { getInitializationMessage } from '../src/content/babylon/initialization.js';
-import { getLogicalToRenderScale } from '../src/content/babylon/pixel-perfect.js';
-import { cycleRenderResolutionPreset, getRenderResolutionDimensions, isRenderResolutionPreset, renderResolutionPresets } from '../src/content/babylon/render-resolution.js';
+import { gameZoomPresets, getRenderedTileCssSize, getTileCssSize } from '../src/content/world/zoom.js';
 
 test('keeps Babylon Lite Pixel Perfect settings and WebGPU-only initialization', () => {
   assert.deepEqual(contentConfig, { renderer: 'babylon-lite', style: '2d' });
@@ -18,23 +17,30 @@ test('keeps Babylon Lite Pixel Perfect settings and WebGPU-only initialization',
   assert.match(getInitializationMessage(true, new Error('#47')), /requires WebGPU/);
 });
 
-test('offers only Half, Native and Double render resolutions with Native as default', () => {
-  assert.deepEqual(renderResolutionPresets, ['half', 'native', 'double']);
-  assert.deepEqual(getRenderResolutionDimensions(320, 180), { preset: 'native', width: 320, height: 180, scale: 1 });
-  assert.deepEqual(getRenderResolutionDimensions(320, 180, 'half'), { preset: 'half', width: 160, height: 90, scale: 0.5 });
-  assert.deepEqual(getRenderResolutionDimensions(320, 180, 'double'), { preset: 'double', width: 640, height: 360, scale: 2 });
-  assert.equal(isRenderResolutionPreset('quarter'), false);
-  assert.equal(cycleRenderResolutionPreset('native'), 'double');
-  assert.equal(getLogicalToRenderScale(640, 360), 2);
+test('uses Zoom presets whose 32-unit tile stays independent of backing density', () => {
+  assert.deepEqual(gameZoomPresets, [0.25, 0.5, 1, 2, 4]);
+  assert.deepEqual(gameZoomPresets.map((zoom) => getTileCssSize(zoom)), [8, 16, 32, 64, 128]);
+  for (const zoom of gameZoomPresets) for (const dpr of [1, 1.5, 2, 3]) assert.equal(getTileCssSize(zoom), 32 * zoom);
 });
 
-test('mounts the dungeon in Babylon Lite and follows the player camera', async () => {
+test('derives CSS tile size from the same backing scale used by the sprite view', () => {
+  assert.equal(getRenderedTileCssSize({ zoom: 2, devicePixelRatio: 1, backingPixelsPerCssPixel: 1 }), 64);
+  assert.equal(getRenderedTileCssSize({ zoom: 2, devicePixelRatio: 1.5, backingPixelsPerCssPixel: 1.5 }), 64);
+  assert.equal(getRenderedTileCssSize({ zoom: 2, devicePixelRatio: 1.5, backingPixelsPerCssPixel: 2 }), 48);
+});
+
+test('mounts the dungeon and minimap in Babylon Lite from the same world component', async () => {
   const source = await readFile(new URL('../src/content/BabylonWorld.jsx', import.meta.url), 'utf8');
   assert.match(source, /createEngine\(canvas, pixelPerfectOptions\.engine\)/);
-  assert.match(source, /createSpriteRenderer\(engine/);
+  assert.match(source, /createSurface\(record\.engine, canvas\)/);
+  assert.match(source, /createSpriteRenderer\(surface/);
+  assert.match(source, /sharedTextures/);
   assert.match(source, /registerSpriteRenderer\(renderer\)/);
   assert.match(source, /await startEngine\(engine\)/);
-  assert.match(source, /centerSprite2DView\(layer\.view, state\.player\.x/);
+  assert.match(source, /resizeSurface\(surface\)/);
+  assert.match(source, /disposeSurface\(surface\)/);
+  assert.match(source, /minimap = false/);
+  assert.match(source, /centerSprite2DView\(layer\.view, centerX, centerY/);
   assert.match(source, /disposeSpriteRenderer\(renderer\)/);
   assert.match(source, /getInitializationMessage\(Boolean\(navigator\.gpu\), error\)/);
   assert.doesNotMatch(source, /getContext\(["'](?:2d|webgl2?)["']/i);

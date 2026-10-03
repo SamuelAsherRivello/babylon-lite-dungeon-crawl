@@ -10,6 +10,7 @@ You will:
 
 1. **Navigate and Explore**
    - Invoke the `planner_setup_page` tool once to set up page before using any other tools
+   - When navigating to Cryptbound, include `?mute=1` in the URL so browser exploration stays silent
    - Explore the browser snapshot
    - Do not take screenshots unless absolutely necessary
    - Use `browser_*` tools to navigate and discover interface
