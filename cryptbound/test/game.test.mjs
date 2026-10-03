@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { applyAction, createCampaign, createGameSession, effectiveAttributes, GAME_TUNING, generateFloor, previewEquipment, resourceState, upgradeCampaignResources } from '../src/game/dungeon.js';
+import { applyAction, combatReadiness, createCampaign, createGameSession, effectiveAttributes, FLOOR_CENTER, FLOOR_HEIGHT, FLOOR_WIDTH, GAME_TUNING, generateFloor, levelUpOptions, previewEquipment, resourceState, upgradeCampaignResources } from '../src/game/dungeon.js';
 import { projectLogEvents } from '../src/game/log-policy.js';
 import { projectFloatingFeedback, removeFloatingFeedback } from '../src/game/floating-feedback.js';
 import { getLatestMovement, getMovementKey, getMoveInitialDelay, getMoveRepeatDelay, SPRINT_INITIAL_DELAY, SPRINT_REPEAT_DELAY, WALK_INITIAL_DELAY, WALK_REPEAT_DELAY } from '../src/game/keyboard-input.js';
-import { getMouseMovementFromSelectedCell } from '../src/game/mouse-selection.js';
+import { findCardinalPath } from '../src/game/a-star.js';
+import { getMouseMovementFromSelectedCell, getMousePathFromSelectedCell } from '../src/game/mouse-selection.js';
 import { describeInventoryDrop, previewInventoryDrop, resolveInventoryDrop } from '../src/game/inventory-drag.js';
 import { getCameraCenter, getWorldCellAtScreenPosition, getWorldCellScreenCenter, getWorldScreenPosition, WorldRender } from '../src/content/world/WorldRender.js';
 import { findWorldTooltipPosition } from '../src/content/world/tooltip-placement.js';
@@ -43,40 +44,39 @@ test('combat events capture actor positions before enemy removal or player respa
   assert.equal(abilityHit.facts.targetId, target.id); assert.deepEqual(abilityHit.facts.targetPosition, { x: target.x, y: target.y });
 
   const dying = createCampaign(303); dying.player.resources.health.current = 1; const oldPosition = { x: dying.player.x, y: dying.player.y };
-  dying.floor.entities = [{ id: 'killer', kind: 'enemy', x: dying.player.x, y: dying.player.y, hp: 9, damage: 99, xp: 1 }];
+  dying.floor.entities = [{ id: 'killer', kind: 'enemy', x: dying.player.x, y: dying.player.y, hp: 9, damage: 99, xp: 1, actionCooldown: 1, nextActionAt: 1 }];
   const death = applyAction(dying, { type: 'move', direction: 'e' });
   const healthLoss = death.events.find((event) => event.type === 'resource.changed' && event.facts.resource === 'health');
   assert.deepEqual(healthLoss.facts.position, { x: oldPosition.x + 1, y: oldPosition.y });
   assert.ok(death.events.some((event) => event.type === 'player.died'));
 });
 
-test('enemy damage is reduced to one quarter after defense mitigation and rounded to a whole number', () => {
+test('enemy damage is deterministic, stamina-scaled, and never reduced below one', () => {
   const campaign = createCampaign(304); campaign.player.resources.stamina.current = 13;
-  const enemy = { id: 'fractional-hit', kind: 'enemy', name: 'Cave Rat', x: campaign.player.x + 2, y: campaign.player.y, hp: 50, damage: 20, xp: 1 };
+  const enemy = { id: 'fractional-hit', kind: 'enemy', name: 'Cave Rat', x: campaign.player.x + 2, y: campaign.player.y, hp: 50, damage: 20, xp: 1, actionCooldown: 1, nextActionAt: 1 };
   campaign.floor.map[enemy.y][enemy.x] = 0; campaign.floor.map[campaign.player.y][campaign.player.x + 1] = 0; campaign.floor.entities = [enemy];
   const result = applyAction(campaign, { type: 'move', direction: 'e' });
   const healthEvent = result.events.find((event) => event.type === 'resource.changed' && event.facts.cause === 'enemy-attack');
-  assert.equal(GAME_TUNING.enemyDamageMultiplier, 0.25);
-  assert.equal(healthEvent.facts.previous - healthEvent.facts.current, 3);
+  assert.equal(healthEvent.facts.previous - healthEvent.facts.current, 19);
   assert.equal(Number.isInteger(healthEvent.facts.previous - healthEvent.facts.current), true);
 });
 
-test('starts a v2 campaign with approved attributes and bindings', () => {
+test('starts a v3 campaign with approved deterministic attributes and bindings', () => {
   const campaign = createCampaign(42);
-  assert.equal(campaign.version, 2);
+  assert.equal(campaign.version, 3);
   assert.equal(campaign.floor.level, 1); assert.equal(campaign.progression.difficulty, 1);
-  assert.deepEqual(campaign.progression.attributes, { health: 25, stamina: 25, offense: 10, defense: 8, mana: 20, vitality: 0, strength: 0, luck: 0, recovery: 0, agility: 0 });
+  assert.deepEqual(campaign.progression.attributes, { health: 30, stamina: 16, offense: 0, defense: 1, mana: 12, vitality: 0, strength: 0, luck: 0, recovery: 0, stealth: 0 });
   assert.deepEqual(campaign.player.abilities, ['heal', 'wand', null, null]);
   assert.deepEqual(campaign.player.equipment, { weapons: [null, null], armor: [null, null] });
   assert.deepEqual(campaign.player.resources, {
-    health: { current: 25, currentMax: 25 }, stamina: { current: 25, currentMax: 25 },
-    offense: { current: 10, currentMax: 10 }, defense: { current: 8, currentMax: 8 },
-    mana: { current: 20, currentMax: 20 }, xp: { current: 0, currentMax: 100, level: 1 },
+    health: { current: 30, currentMax: 30 }, stamina: { current: 16, currentMax: 16 },
+    offense: { current: 0, currentMax: 0 }, defense: { current: 1, currentMax: 1 },
+    mana: { current: 12, currentMax: 12 }, xp: { current: 0, currentMax: 100, level: 1 },
   });
   assert.equal(campaign.player.inventoryCapacity, 10); assert.deepEqual(campaign.player.inventory, []);
   assert.deepEqual(campaign.counters, { keys: 1, gold: 55 });
   assert.equal(campaign.objective, 'Find the exit'); assert.deepEqual(campaign.log, []);
-  assert.deepEqual(Object.keys(campaign.progression.attributes), ['health', 'stamina', 'offense', 'defense', 'mana', 'vitality', 'strength', 'luck', 'recovery', 'agility']);
+  assert.deepEqual(Object.keys(campaign.progression.attributes), ['health', 'stamina', 'offense', 'defense', 'mana', 'vitality', 'strength', 'luck', 'recovery', 'stealth']);
 });
 
 test('accepted move and equipment changes emit events and cost one time unit', () => {
@@ -99,10 +99,10 @@ test('drag previews are pure and show equipment attribute changes before commit'
 });
 
 test('resource maxima and derived offense track current stamina', () => {
-  const campaign = createCampaign(4); campaign.player.resources.stamina.current = 20;
+  const campaign = createCampaign(4); campaign.player.equipment.weapons[0] = { id: 'stick', name: 'Stick', group: 'weapons', modifiers: { offense: 6 } }; campaign.player.resources.stamina.current = 8;
   upgradeCampaignResources(campaign);
   const resources = resourceState(campaign);
-  assert.equal(resources.stamina.currentMax, 25); assert.equal(resources.offense.current, 8);
+  assert.equal(resources.stamina.currentMax, 16); assert.equal(resources.offense.current, 5); assert.equal(combatReadiness(8, 16), 0.875);
 });
 
 test('saved campaigns and preferences remain independent', () => {
@@ -134,15 +134,41 @@ test('migrates legacy campaigns without losing world progress or duplicating equ
     pending: { type: 'level-choice', choices: ['strength'] },
   };
   const migrated = migrateCampaign(legacy);
-  assert.equal(migrated.realm, 'Crypt 4'); assert.equal(migrated.player.x, 8); assert.equal(migrated.player.y, 9);
+  assert.equal(migrated.realm, 'Crypt 4'); assert.equal(migrated.player.x, 57); assert.equal(migrated.player.y, 58);
+  assert.equal(migrated.floor.width, FLOOR_WIDTH); assert.equal(migrated.floor.height, FLOOR_HEIGHT); assert.deepEqual(migrated.floor.start, { x: 51, y: 52 }); assert.equal(migrated.floor.map[49][49], 0);
   assert.equal(migrated.floor.time, 31); assert.equal(migrated.floor.level, 4); assert.equal(migrated.progression.difficulty, 4);
-  assert.deepEqual(migrated.floor.entities.map(({ resources, ...entity }) => entity), [{ ...legacy.floor.entities[0], damage: 0, maxHp: 7 }]);
+  assert.equal(migrated.version, 3); assert.deepEqual(migrated.floor.entities.map(({ resources, ...entity }) => ({ id: entity.id, kind: entity.kind, x: entity.x, y: entity.y })), [{ id: 'rat', kind: 'enemy', x: 53, y: 54 }]);
   assert.equal(migrated.floor.entities[0].resources.health.current, 7);
   assert.equal(migrated.floor.entities[0].resources.xp.current, 10);
   assert.equal(migrated.progression.level, 3); assert.equal(migrated.progression.xp, 45);
-  assert.deepEqual(migrated.progression.attributes, { health: 30, stamina: 18, offense: 12, defense: 6, mana: 20, vitality: 0, strength: 0, luck: 0, recovery: 0, agility: 0 });
+  assert.equal(migrated.progression.attributes.stealth, 0); assert.equal(migrated.progression.attributes.strength, 999);
   const items = [...migrated.player.equipment.weapons, ...migrated.player.equipment.armor, ...migrated.player.inventory].filter(Boolean);
   assert.equal(items.length, 2); assert.equal(new Set(items.map((item) => item.id)).size, 2);
+});
+
+test('generates centered 100 by 100 floors and leaves expanded campaigns untouched', () => {
+  const floor = generateFloor(101, 99);
+  assert.equal(floor.width, FLOOR_WIDTH); assert.equal(floor.height, FLOOR_HEIGHT); assert.deepEqual(floor.start, FLOOR_CENTER); assert.equal(floor.map[FLOOR_CENTER.y][FLOOR_CENTER.x], 0);
+  const stairs = floor.entities.find((entity) => entity.kind === 'stairs');
+  assert.equal(floor.map[stairs.y][stairs.x], 0);
+  const visited = new Set([`${floor.start.x},${floor.start.y}`]); const pending = [{ ...floor.start }];
+  while (pending.length) {
+    const { x, y } = pending.shift();
+    for (const [nextX, nextY] of [[x - 1, y], [x + 1, y], [x, y - 1], [x, y + 1]]) if (floor.map[nextY]?.[nextX] === 0 && !visited.has(`${nextX},${nextY}`)) { visited.add(`${nextX},${nextY}`); pending.push({ x: nextX, y: nextY }); }
+  }
+  assert.ok(visited.has(`${stairs.x},${stairs.y}`));
+  const campaign = createCampaign(100);
+  assert.equal(migrateCampaign(campaign), campaign);
+});
+
+test('expands undersized version-2 floors once while preserving world offsets', () => {
+  const campaign = createCampaign(102);
+  campaign.floor = { ...campaign.floor, width: 40, height: 20, map: Array.from({ length: 20 }, () => Array.from({ length: 40 }, () => 1)), start: { x: 2, y: 3 }, entities: [{ id: 'kept', kind: 'enemy', name: 'Cave Rat', x: 4, y: 5, hp: 7, maxHp: 7, damage: 2, xp: 1 }] };
+  campaign.floor.map[3][2] = 0; campaign.floor.map[5][4] = 0; campaign.player.x = 8; campaign.player.y = 9;
+  const migrated = migrateCampaign(campaign);
+  assert.equal(migrated.floor.width, 100); assert.equal(migrated.floor.height, 100); assert.deepEqual(migrated.floor.start, { x: 32, y: 43 });
+  assert.deepEqual({ x: migrated.player.x, y: migrated.player.y }, { x: 38, y: 49 }); assert.deepEqual({ x: migrated.floor.entities[0].x, y: migrated.floor.entities[0].y }, { x: 34, y: 45 });
+  assert.equal(migrated.floor.map[43][32], 0); assert.equal(migrated.floor.map[45][34], 0); assert.equal(migrateCampaign(migrated), migrated);
 });
 
 test('backs up legacy bytes before replacing them and leaves invalid records intact', () => {
@@ -151,7 +177,7 @@ test('backs up legacy bytes before replacing them and leaves invalid records int
   const raw = JSON.stringify(legacy); storage.setItem('cryptbound.slot.2', raw);
   assert.equal(readSlot(storage, '2').floor.time, 6);
   assert.equal(storage.getItem('cryptbound.slot.v1-backup.2'), raw);
-  assert.equal(JSON.parse(storage.getItem('cryptbound.slot.2')).version, 2);
+  assert.equal(JSON.parse(storage.getItem('cryptbound.slot.2')).version, 3);
   const bad = '{broken'; storage.setItem('cryptbound.slot.3', bad);
   assert.equal(readSlotSummary(storage)[2].invalid, true); assert.equal(storage.getItem('cryptbound.slot.3'), bad);
   assert.throws(() => readSlot({ getItem: () => { throw new Error('blocked'); } }, '1'), /blocked/);
@@ -187,13 +213,25 @@ test('world tooltip placement stays inside its frame and avoids both grid spots'
   assert.equal(findWorldTooltipPosition({ left: 0, top: 0, right: 80, bottom: 60 }, { width: 100, height: 70 }, protectedRects), null);
 });
 
+test('compact world tooltip fits beside protected cells in a narrow game frame', () => {
+  const frame = { left: 0, top: 0, right: 421, bottom: 389 };
+  const hovered = { left: 143, top: 82, width: 45, height: 45 };
+  const player = { left: 188, top: 172, width: 45, height: 45 };
+  const position = findWorldTooltipPosition(frame, { width: 176, height: 164 }, [hovered, player]);
+  assert.ok(position);
+  const panel = { left: position.left, top: position.top, width: 176, height: 164 };
+  assert.ok(panel.left >= frame.left && panel.top >= frame.top && panel.left + panel.width <= frame.right && panel.top + panel.height <= frame.bottom);
+  for (const rect of [hovered, player]) assert.ok(panel.left + panel.width <= rect.left || panel.left >= rect.left + rect.width || panel.top + panel.height <= rect.top || panel.top >= rect.top + rect.height);
+});
+
 test('adds Dungeon Level and saved Difficulty to existing v2 campaigns without losing progress', () => {
-  const storage = new MemoryStorage(); const old = createCampaign(18); old.floor.depth = 6; delete old.floor.level; delete old.progression.difficulty;
+  const storage = new MemoryStorage(); const old = createCampaign(18); old.version = 2; old.floor.depth = 6; delete old.floor.level; delete old.progression.difficulty; old.progression.attributes.agility = 4; delete old.progression.attributes.stealth;
   old.floor.time = 41; old.progression.level = 5; old.progression.xp = 33;
   storage.setItem('cryptbound.slot.1', JSON.stringify(old));
   const loaded = readSlot(storage, '1');
   assert.equal(loaded.floor.level, 6); assert.equal(loaded.progression.difficulty, 6);
   assert.equal(loaded.floor.time, 41); assert.equal(loaded.progression.level, 5); assert.equal(loaded.progression.xp, 33);
+  assert.equal(loaded.version, 3); assert.equal(loaded.progression.attributes.stealth, 4);
   assert.equal(storage.getItem('cryptbound.slot.v1-backup.1'), null);
 });
 
@@ -203,14 +241,14 @@ test('persists hidden Difficulty across exit, death, and save reload while it sc
   campaign.floor.map[campaign.player.y][campaign.player.x + 1] = 0;
   const descended = applyAction(campaign, { type: 'move', direction: 'e' }).state;
   assert.equal(descended.floor.level, 2); assert.equal(descended.progression.difficulty, 2);
-  const expectedEnemy = (level) => 10 + level * 2;
+  const expectedEnemy = (level) => 12 + (level - 1) * 3;
   assert.ok(descended.floor.entities.filter((entity) => entity.kind === 'enemy').every((enemy) => enemy.maxHp >= expectedEnemy(descended.progression.difficulty)));
   writeSlot(storage, '1', descended);
   const reloaded = readSlot(storage, '1');
   assert.equal(reloaded.floor.level, 2); assert.equal(reloaded.progression.difficulty, 2);
   reloaded.floor.level = 7; reloaded.floor.time = 89; reloaded.progression.difficulty = 7;
   reloaded.player.resources.health.current = 1;
-  reloaded.floor.entities = [{ id: 'killer', kind: 'enemy', x: reloaded.player.x + 1, y: reloaded.player.y, hp: 99, damage: 99, xp: 1 }];
+  reloaded.floor.entities = [{ id: 'killer', kind: 'enemy', x: reloaded.player.x + 1, y: reloaded.player.y, hp: 99, damage: 99, xp: 1, actionCooldown: 1, nextActionAt: 1 }];
   reloaded.floor.map[reloaded.player.y][reloaded.player.x + 1] = 0;
   const death = applyAction(reloaded, { type: 'move', direction: 'e' }).state;
   assert.equal(death.floor.level, 1); assert.equal(death.floor.time, 0); assert.equal(death.progression.difficulty, 7);
@@ -262,17 +300,17 @@ test('preserves resource fullness when equipment changes maxima and handles zero
   campaign.player.resources.health.current = 20;
   campaign.player.inventory = [{ id: 'vital-armor', name: 'Vital Armor', group: 'armor', modifiers: { health: -15 } }];
   const result = applyAction(campaign, { type: 'equip', itemId: 'vital-armor', group: 'armor', index: 0 });
-  assert.equal(result.state.player.resources.health.current, 8);
-  assert.equal(effectiveAttributes(result.state).health, 10);
-  assert.ok(result.events.some((event) => event.type === 'resource.changed' && event.facts.previousMax === 25 && event.facts.currentMax === 10));
+  assert.equal(result.state.player.resources.health.current, 10);
+  assert.equal(effectiveAttributes(result.state).health, 15);
+  assert.ok(result.events.some((event) => event.type === 'resource.changed' && event.facts.previousMax === 30 && event.facts.currentMax === 15));
   result.state.player.equipment.armor[0].modifiers.health = -10;
   result.state.player.resources.stamina.current = 20;
   upgradeCampaignResources(result.state);
-  assert.equal(resourceState(result.state).stamina.currentMax, 25);
-  assert.equal(resourceState(result.state).offense.current, resourceState(result.state).offense.currentMax * 0.8);
+  assert.equal(resourceState(result.state).stamina.currentMax, 16);
+  assert.equal(resourceState(result.state).offense.current, Math.round(resourceState(result.state).offense.currentMax * combatReadiness(16, 16)));
   result.state.progression.attributes.stamina = 0; result.state.player.resources.stamina.current = 0;
   upgradeCampaignResources(result.state);
-  assert.equal(resourceState(result.state).offense.current, 0); assert.equal(resourceState(result.state).defense.current, 0);
+  assert.equal(resourceState(result.state).offense.current, 0); assert.equal(resourceState(result.state).defense.current, 1);
 });
 
 test('potion pickups refill directly below cap and remain when already full', () => {
@@ -282,10 +320,10 @@ test('potion pickups refill directly below cap and remain when already full', ()
   campaign.floor.entities = [{ id: 'health-potion-1', kind: 'potion', resource: 'health', x: target.x, y: target.y }];
   campaign.player.resources.health.current = 10;
   const collected = applyAction(campaign, { type: 'move', direction: 'e' });
-  assert.equal(collected.state.player.resources.health.current, 25); assert.equal(collected.state.player.inventory.length, 0);
+  assert.equal(collected.state.player.resources.health.current, 20); assert.equal(collected.state.player.inventory.length, 0);
   assert.equal(collected.state.floor.time, 1); assert.ok(collected.events.some((event) => event.type === 'potion.consumed' && event.facts.itemId === 'health-potion-1'));
   campaign.floor.entities = [{ id: 'health-potion-2', kind: 'potion', resource: 'health', x: target.x, y: target.y }];
-  campaign.player.x = target.x - 1; campaign.player.y = target.y; campaign.player.resources.health.current = 25;
+  campaign.player.x = target.x - 1; campaign.player.y = target.y; campaign.player.resources.health.current = 30;
   const full = applyAction(campaign, { type: 'move', direction: 'e' });
   assert.equal(full.state.player.x, target.x); assert.equal(full.state.floor.entities.length, 1); assert.equal(full.state.floor.time, 1);
 });
@@ -295,27 +333,59 @@ test('attacks charge once, award attack and kill XP, and carry threshold overflo
   const target = { x: campaign.player.x + 1, y: campaign.player.y };
   campaign.floor.map[target.y][target.x] = 0;
   campaign.floor.entities = [{ id: 'rat', kind: 'enemy', name: 'Cave Rat', x: target.x, y: target.y, hp: 1, damage: 0, xp: 8 }];
-  campaign.progression.xp = 95; campaign.player.resources.stamina.current = 25;
+  campaign.progression.xp = 95; campaign.player.resources.stamina.current = 16;
   const result = applyAction(campaign, { type: 'move', direction: 'e' });
   assert.equal(result.ticks, 1); assert.equal(result.state.floor.time, 1);
-  assert.equal(result.state.player.resources.stamina.current, 20); assert.equal(result.state.progression.level, 2);
+  assert.equal(result.state.player.resources.stamina.current, 12); assert.equal(result.state.progression.level, 2);
   assert.equal(result.state.progression.xp, 4); assert.equal(result.state.progression.nextXp, GAME_TUNING.xpThreshold);
+  assert.deepEqual(result.state.progression.pendingUpgrades[0].options, levelUpOptions(2));
   assert.equal(result.events.filter((event) => event.type === 'resource.changed' && event.facts.resource === 'stamina').length, 1);
+});
+
+test('persistent ranks deterministically improve resources, loot, recovery, and awareness', () => {
+  const campaign = createCampaign(370); campaign.floor.entities = [];
+  Object.assign(campaign.progression.attributes, { vitality: 2, strength: 1, luck: 2, recovery: 2, stealth: 2 });
+  campaign.player.equipment.weapons[0] = { id: 'stick', name: 'Stick', group: 'weapons', modifiers: { offense: 6 } };
+  campaign.player.resources.stamina.current = 0;
+  campaign.floor.map[campaign.player.y][campaign.player.x + 1] = 0;
+  const moved = applyAction(campaign, { type: 'move', direction: 'e' });
+  assert.equal(effectiveAttributes(moved.state).health, 36); assert.equal(effectiveAttributes(moved.state).offense, 7);
+  assert.equal(moved.state.player.resources.stamina.current, 4);
+
+  const chest = structuredClone(moved.state); chest.floor.entities = [{ id: 'chest', kind: 'chest', x: chest.player.x + 1, y: chest.player.y, opened: false }]; chest.floor.map[chest.player.y][chest.player.x + 1] = 0;
+  const loot = applyAction(chest, { type: 'move', direction: 'e' });
+  assert.equal(loot.events.find((event) => event.type === 'chest.opened').facts.lootTier, 1);
+
+  const cautious = structuredClone(moved.state); cautious.floor.entities = [{ id: 'watcher', kind: 'enemy', x: cautious.player.x + 5, y: cautious.player.y, hp: 12, damage: 11, xp: 1, awareness: 6, actionCooldown: 1, nextActionAt: 1 }];
+  for (let offset = 1; offset <= 6; offset++) cautious.floor.map[cautious.player.y][cautious.player.x + offset] = 0;
+  const hidden = applyAction(cautious, { type: 'move', direction: 'w' });
+  assert.equal(hidden.state.floor.entities[0].x, cautious.floor.entities[0].x);
+});
+
+test('level choices are distinct, block tactical actions, and resolve without another turn', () => {
+  const campaign = createCampaign(371); const target = { x: campaign.player.x + 1, y: campaign.player.y };
+  campaign.player.equipment.weapons[0] = { id: 'stick', name: 'Stick', group: 'weapons', modifiers: { offense: 6 } };
+  campaign.floor.map[target.y][target.x] = 0; campaign.floor.entities = [{ id: 'rat', kind: 'enemy', name: 'Rat', x: target.x, y: target.y, hp: 1, damage: 0, xp: 8 }]; campaign.progression.xp = 95;
+  const earned = applyAction(campaign, { type: 'move', direction: 'e' }); const pending = earned.state.progression.pendingUpgrades[0];
+  assert.deepEqual(pending.options, levelUpOptions(2)); assert.equal(new Set(pending.options).size, 3);
+  assert.equal(applyAction(earned.state, { type: 'toggle-sneak' }).events[0].facts.reason, 'level-up-pending');
+  const beforeTime = earned.state.floor.time; const selected = applyAction(earned.state, { type: 'choose-upgrade', stat: pending.options[0] });
+  assert.equal(selected.accepted, true); assert.equal(selected.ticks, 0); assert.equal(selected.state.floor.time, beforeTime); assert.equal(selected.state.progression.attributes[pending.options[0]], 1);
 });
 
 test('death starts a clean run while preserving persistent progression and bindings', () => {
   const campaign = createCampaign(38); campaign.floor.entities = [];
   campaign.floor.level = 10; campaign.floor.time = 63; campaign.progression.difficulty = 10;
   campaign.player.resources.health.current = 1; campaign.progression.level = 4; campaign.progression.xp = 27;
-  campaign.progression.attributes.offense = 14; campaign.player.abilities = ['wand', 'heal', null, null];
+  campaign.progression.attributes.strength = 14; campaign.player.abilities = ['wand', 'heal', null, null];
   campaign.player.inventory = [{ id: 'lost-item', name: 'Lost Sword', group: 'weapons', modifiers: { offense: 5 } }];
   campaign.player.equipment.weapons[0] = { id: 'equipped', name: 'Equipped Sword', group: 'weapons', modifiers: { offense: 8 } };
   const target = { x: campaign.player.x + 1, y: campaign.player.y }; campaign.floor.map[target.y][target.x] = 0;
-  campaign.floor.entities = [{ id: 'killer', kind: 'enemy', name: 'Killer', x: target.x + 1, y: target.y, hp: 20, damage: 99, xp: 1 }];
+  campaign.floor.entities = [{ id: 'killer', kind: 'enemy', name: 'Killer', x: target.x + 1, y: target.y, hp: 20, damage: 99, xp: 1, actionCooldown: 1, nextActionAt: 1 }];
   const result = applyAction(campaign, { type: 'move', direction: 'e' });
   assert.equal(result.state.realm, 'Underground 1'); assert.equal(result.state.floor.level, 1); assert.equal(result.state.floor.time, 0); assert.equal(result.state.progression.difficulty, 10);
   assert.equal(result.state.progression.level, 4); assert.equal(result.state.progression.xp, 27);
-  assert.equal(result.state.progression.attributes.offense, 14); assert.deepEqual(result.state.player.abilities, ['wand', 'heal', null, null]);
+  assert.equal(result.state.progression.attributes.strength, 14); assert.deepEqual(result.state.player.abilities, ['wand', 'heal', null, null]);
   assert.deepEqual(result.state.player.inventory, []); assert.deepEqual(result.state.player.equipment.weapons, [null, null]);
   assert.deepEqual(result.state.counters, { keys: 1, gold: 55 });
   assert.ok(result.events.some((event) => event.type === 'player.died'));
@@ -403,6 +473,10 @@ test('WorldRender shares exact terrain and entity coordinates while camera polic
   assert.deepEqual(getCameraCenter({ mode: 'screen', player: { x: 9, y: 10 }, visibleWidth: 10, visibleHeight: 8 }), { x: 5, y: 12 });
   assert.deepEqual(getCameraCenter({ mode: 'screen', player: { x: 20, y: 7 }, visibleWidth: 10, visibleHeight: 8 }), { x: 25, y: 4 });
   assert.deepEqual(getCameraCenter({ mode: 'screen', player: { x: 20, y: 8 }, visibleWidth: 10, visibleHeight: 8 }), { x: 25, y: 12 });
+  assert.deepEqual(getCameraCenter({ mode: 'center', player: { x: 1, y: 1 }, visibleWidth: 20, visibleHeight: 10, mapWidth: 100, mapHeight: 100 }), { x: 9.5, y: 4.5 });
+  assert.deepEqual(getCameraCenter({ mode: 'deadzone', player: { x: 98, y: 99 }, previousCenter: { x: 80, y: 80 }, visibleWidth: 20, visibleHeight: 10, mapWidth: 100, mapHeight: 100 }), { x: 89.5, y: 94.5 });
+  assert.deepEqual(getCameraCenter({ mode: 'screen', player: { x: 99, y: 99 }, visibleWidth: 20, visibleHeight: 10, mapWidth: 100, mapHeight: 100 }), { x: 89.5, y: 94.5 });
+  assert.deepEqual(getCameraCenter({ mode: 'center', player: { x: 1, y: 1 }, visibleWidth: 120, visibleHeight: 120, mapWidth: 100, mapHeight: 100 }), { x: 1, y: 1 });
   assert.deepEqual({ x: campaign.player.x, y: campaign.player.y }, game.markers.player); // Camera framing never mutates map coordinates.
 });
 test('floating text anchors to the target cell top edge across camera movement and zoom', () => {
@@ -432,13 +506,26 @@ test('a held selection remains on its original world cell as the camera scrolls'
     assert.deepEqual(getWorldCellAtScreenPosition({ screenX: position.left, screenY: position.top, center, viewportWidth, viewportHeight, tileCssSize }), selected);
   }
 });
-test('selected grid cell is the single source for mouse movement', () => {
-  const player = { x: 5, y: 5 };
-  assert.equal(getMouseMovementFromSelectedCell(null, player), null);
-  assert.equal(getMouseMovementFromSelectedCell({ x: 7, y: 5, pressed: false }, player), null);
-  assert.deepEqual(getMouseMovementFromSelectedCell({ x: 7, y: 6, pressed: true }, player), { direction: 'e', sprint: false });
-  assert.deepEqual(getMouseMovementFromSelectedCell({ x: 4, y: 8, pressed: true, sprint: true }, player), { direction: 's', sprint: true });
-  assert.equal(getMouseMovementFromSelectedCell({ x: 5, y: 5, pressed: true }, player), null);
+test('cardinal A* routes around terrain, rejects sealed destinations, and honors occupancy', () => {
+  const aroundWall = { map: [[0, 0, 0, 0, 0], [0, 1, 1, 1, 0], [0, 0, 0, 0, 0]], entities: [] };
+  const route = findCardinalPath(aroundWall, { x: 0, y: 1 }, { x: 4, y: 1 });
+  assert.deepEqual(route.at(0), { x: 0, y: 1 }); assert.deepEqual(route.at(-1), { x: 4, y: 1 });
+  assert.ok(route.every((cell, index) => !index || Math.abs(cell.x - route[index - 1].x) + Math.abs(cell.y - route[index - 1].y) === 1));
+  assert.equal(findCardinalPath({ map: [[0, 1, 0], [1, 1, 1], [0, 1, 0]], entities: [] }, { x: 0, y: 0 }, { x: 2, y: 2 }), null);
+  assert.equal(findCardinalPath({ map: [[0, 0, 0]], entities: [{ id: 'blocker', x: 1, y: 0 }] }, { x: 0, y: 0 }, { x: 2, y: 0 }), null);
+  assert.deepEqual(findCardinalPath({ map: [[0, 0, 0]], entities: [{ id: 'target', kind: 'enemy', x: 2, y: 0 }] }, { x: 0, y: 0 }, { x: 2, y: 0 }), [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 2, y: 0 }]);
+});
+
+test('selected grid cell follows only the next A* route step', () => {
+  const campaign = { player: { x: 0, y: 1 }, floor: { map: [[0, 0, 0, 0, 0], [0, 1, 1, 1, 0], [0, 0, 0, 0, 0]], entities: [] } };
+  assert.equal(getMouseMovementFromSelectedCell(null, campaign), null);
+  assert.equal(getMouseMovementFromSelectedCell({ x: 4, y: 1, pressed: false }, campaign), null);
+  const path = getMousePathFromSelectedCell({ x: 4, y: 1, pressed: true }, campaign);
+  const move = getMouseMovementFromSelectedCell({ x: 4, y: 1, pressed: true }, campaign, path);
+  assert.ok(path.length > 2); assert.deepEqual(move, { direction: 'n', sprint: false });
+  const moved = applyAction({ ...campaign, floor: { ...campaign.floor, time: 0, level: 1 }, progression: { attributes: { health: 25, stamina: 25, offense: 10, defense: 8, mana: 20 }, level: 1, xp: 0, nextXp: 100, difficulty: 1 }, player: { ...campaign.player, resources: { health: { current: 25, currentMax: 25 }, stamina: { current: 25, currentMax: 25 }, offense: { current: 10, currentMax: 10 }, defense: { current: 8, currentMax: 8 }, mana: { current: 20, currentMax: 20 }, xp: { current: 0, currentMax: 100, level: 1 } }, equipment: { weapons: [null, null], armor: [null, null] }, inventory: [], inventoryCapacity: 10, abilities: [], sneaking: false }, counters: {}, world: 'One', realm: 'Underground 1', objective: '', log: [] }, { type: 'move', direction: move.direction });
+  assert.equal(moved.accepted, true); assert.deepEqual({ x: moved.state.player.x, y: moved.state.player.y }, path[1]); assert.equal(moved.state.floor.time, 1);
+  assert.equal(getMouseMovementFromSelectedCell({ x: 2, y: 2, pressed: true }, { ...campaign, floor: { ...campaign.floor, map: [[0, 1, 0], [1, 1, 1], [0, 1, 0]] } }), null);
 });
 test('game Zoom presets map a 32 CSS-pixel tile independently of backing density', () => {
   assert.deepEqual(gameZoomPresets.map((zoom) => getTileCssSize(zoom)), [8, 16, 32, 64, 128]);
@@ -499,7 +586,7 @@ test('integrates collect, equipment preview and reorder, ability, potion, descen
   assert.ok(descent.events.some((event) => event.type === 'realm.entered'));
   assert.equal(state.floor.level, 2); assert.equal(state.progression.difficulty, 2);
   const oldTime = state.floor.time, oldX = state.player.x, oldY = state.player.y;
-  open(oldX + 1, oldY); state.floor.entities = [{ id: 'fatal', kind: 'enemy', name: 'Fatal Enemy', x: oldX, y: oldY, hp: 10, damage: 999, xp: 1 }];
+  open(oldX + 1, oldY); state.floor.entities = [{ id: 'fatal', kind: 'enemy', name: 'Fatal Enemy', x: oldX, y: oldY, hp: 10, damage: 999, xp: 1, actionCooldown: 1, nextActionAt: oldTime + 1 }];
   const death = applyAction(state, { type: 'move', direction: 'e' });
   assert.ok(death.events.some((event) => event.type === 'player.died'));
   assert.equal(death.events.filter((event) => event.type === 'time.advanced').length, 1);

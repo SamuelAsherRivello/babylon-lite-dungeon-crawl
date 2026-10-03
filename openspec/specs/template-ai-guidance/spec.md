@@ -51,8 +51,8 @@ The checklist SHALL define a concise delivery summary that distinguishes complet
 - **THEN** the agent reports the project as ready with the evidence gathered by the delivery gate
 
 ### Requirement: New-project layout and game decisions are in the checklist
-The template usage checklist SHALL require every new app or game project to choose one portrait or landscape orientation, remove orientation switching, and implement only that orientation. For games, it SHALL also direct the agent to resolve renderer, rendering policy, viewport/gutter use, scrolling, and optional audio controls before declaring the game ready.
+Guidance SHALL distinguish the reusable template's default single-orientation setup from this game's explicitly approved PC landscape/mobile portrait requirement. This game's agent guidance and checklist SHALL identify automatic selection, developer-only preview, removed corner units, and the renderer/UI boundary as the current design.
 
 #### Scenario: Checklist is used for an app or game
-- **WHEN** an agent follows the template usage checklist to create an app or game
-- **THEN** it selects one orientation and removes the orientation switch, and for games it follows the game integration guidance and reports relevant choices and checks
+- **WHEN** an agent uses repository guidance for this game
+- **THEN** it can find the agreed platform-responsive design and does not reintroduce obsolete corner, aspect-picker, or landscape-only requirements

@@ -13,17 +13,24 @@ export const WorldRender = Object.freeze({
   },
 });
 
+function clampCameraAxis(value, visibleSpan, mapSpan) {
+  if (!Number.isFinite(mapSpan) || mapSpan < visibleSpan) return value;
+  const min = visibleSpan / 2 - 0.5;
+  const max = mapSpan - visibleSpan / 2 - 0.5;
+  return Math.min(max, Math.max(min, value));
+}
+
 /** Return the world coordinate centered by a camera policy, in tile units. */
-export function getCameraCenter({ mode = "center", player, previousCenter = player, visibleWidth, visibleHeight }) {
+export function getCameraCenter({ mode = "center", player, previousCenter = player, visibleWidth, visibleHeight, mapWidth, mapHeight }) {
+  let center;
   if (mode === "screen") {
     const pageWidth = Math.max(1, Math.floor(visibleWidth)); const pageHeight = Math.max(1, Math.floor(visibleHeight));
-    return { x: Math.floor(player.x / pageWidth) * pageWidth + pageWidth / 2, y: Math.floor(player.y / pageHeight) * pageHeight + pageHeight / 2 };
-  }
-  if (mode === "deadzone") {
+    center = { x: Math.floor(player.x / pageWidth) * pageWidth + pageWidth / 2, y: Math.floor(player.y / pageHeight) * pageHeight + pageHeight / 2 };
+  } else if (mode === "deadzone") {
     const halfX = Math.max(0, visibleWidth * 0.15); const halfY = Math.max(0, visibleHeight * 0.15);
-    return { x: player.x < previousCenter.x - halfX ? player.x + halfX : player.x > previousCenter.x + halfX ? player.x - halfX : previousCenter.x, y: player.y < previousCenter.y - halfY ? player.y + halfY : player.y > previousCenter.y + halfY ? player.y - halfY : previousCenter.y };
-  }
-  return { x: player.x, y: player.y };
+    center = { x: player.x < previousCenter.x - halfX ? player.x + halfX : player.x > previousCenter.x + halfX ? player.x - halfX : previousCenter.x, y: player.y < previousCenter.y - halfY ? player.y + halfY : player.y > previousCenter.y + halfY ? player.y - halfY : previousCenter.y };
+  } else center = { x: player.x, y: player.y };
+  return { x: clampCameraAxis(center.x, visibleWidth, mapWidth), y: clampCameraAxis(center.y, visibleHeight, mapHeight) };
 }
 
 /** Project a world-cell coordinate into viewport CSS pixels using the active camera and zoom. */

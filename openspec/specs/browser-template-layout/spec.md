@@ -23,17 +23,6 @@ The template SHALL allow responsive app content inside the viewport and optional
 - **WHEN** content and gutter elements are supplied and the available dimensions change
 - **THEN** content adapts within the viewport and gutter elements stay within residual external space without pushing the viewport inward
 
-### Requirement: Four operable corners
-The template SHALL provide reusable upper-left title, upper-right links, lower-left settings, and lower-right version corners inside the viewport. It SHALL preserve fullscreen toggling, preference persistence, fullscreen-event synchronization, failure handling, protected repository-link behavior, and the root version source. Overlay gaps SHALL allow content interaction; corner controls SHALL remain reachable at small sizes.
-
-#### Scenario: Preserved actions
-- **WHEN** a user toggles fullscreen, exits it through browser controls, follows the repository link, or reads the version
-- **THEN** fullscreen state and stored preference synchronize, failures are handled, the link retains protected new-tab behavior, and the displayed version matches the root version file
-
-#### Scenario: Small viewport and hit testing
-- **WHEN** corner content wraps in a small viewport and the user interacts with content outside corner bounds
-- **THEN** corner actions remain reachable and overlay gaps do not intercept content input
-
 ### Requirement: CSS resolution independence
 Browser, viewport, gutter, and UI dimensions SHALL use CSS pixels without multiplication by device pixel ratio or future game render scale.
 
@@ -42,12 +31,19 @@ Browser, viewport, gutter, and UI dimensions SHALL use CSS pixels without multip
 - **THEN** viewport dimensions and corner placement remain equivalent in CSS pixels
 
 ### Requirement: Content renderer preserves browser layout
-The starter SHALL allow a game renderer to run inside the viewport content layer beneath the existing UI overlay. Renderer backing resolution and game scaling SHALL NOT change CSS viewport, gutter, or UI geometry. The renderer SHALL not intercept input in UI corner controls.
+The game renderer SHALL run within the viewport content layer, independently of React layout. Backing resolution and world Zoom SHALL not change viewport ratio, external gutters, or UI CSS geometry. The renderer SHALL not intercept input meant for the titlebar, statusbar, panels, or Settings.
 
 #### Scenario: Renderer and UI composition
-- **WHEN** the Babylon Lite content scene is running inside the viewport
-- **THEN** it fills the content layer beneath the UI, and the viewport ratio, external gutters, four corner roles, and UI CSS geometry remain unchanged
+- **WHEN** world rendering runs in the game region
+- **THEN** all primary UI stays within the fitted shell in windowed and fullscreen modes
 
 #### Scenario: Corner interaction above content
-- **WHEN** a user operates a corner control while game content is rendered underneath
-- **THEN** the control remains reachable and renderer interaction does not prevent the control action
+- **WHEN** a player operates a replacement titlebar or Settings control
+- **THEN** it remains reachable and world input does not consume that interaction
+
+### Requirement: Keep replacement shell actions operable
+The game shell SHALL own title, source link, version, Settings, and fullscreen actions without rendering any template corner unit. The source link SHALL retain protected new-tab behavior; version SHALL come from the root version source. Fullscreen state and preference SHALL synchronize with browser events and failures.
+
+#### Scenario: Operate actions after removing corners
+- **WHEN** the player enters fullscreen, exits it using browser controls, follows GitHub, or reads version
+- **THEN** the replacement controls remain usable, fullscreen state stays accurate, the source link is protected, and version matches the root file

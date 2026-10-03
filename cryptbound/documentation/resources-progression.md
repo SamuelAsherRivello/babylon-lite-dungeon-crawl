@@ -1,19 +1,31 @@
 # Resources and progression
 
-## Attributes and meters
+## Deterministic combat resources
 
-The active attributes are Health, Stamina, Offense, Defense, and Mana. Their values define the matching resource maximum. Vitality, Strength, Luck, Recovery, and Agility start at zero and do not affect gameplay. Resource bars use a 0–100 attribute domain: normal fill represents current value, a marker shows the current maximum, and the accessible label reports current and maximum values. XP is shown last with the level number.
+New characters begin with 30 Health, 16 Stamina, 12 Mana, and 1 innate Defense. The nearby Wooden Stick deals 6 base damage. A basic floor-one enemy has 12 Health, 11 attack, 6-tile awareness, and acts every two turns once aware. This makes the opening enemy take two full-Stamina stick attacks to defeat while a full-health character survives three of its hits.
 
-For example, Health 20 with a maximum of 25 fills 20% of the 0–100 bar, with its marker at 25%. If equipment lowers the maximum to 10, current Health preserves 80% fullness and becomes 8. Zero maxima produce zero current value and no division by zero. Offense and Defense are derived from their attribute values and the current Stamina ratio.
+Attacks cost 4 Stamina. Each accepted ground move restores 2 Stamina plus the Recovery rank, without exceeding maximum Stamina. Health and Mana never regenerate from movement. Current Stamina produces a deterministic readiness multiplier from 75% to 100%: it applies to both weapon Offense and Defense. An enemy hit is its attack minus effective Defense, with a minimum of 1 damage; there are no hit, critical, block, or damage-range rolls.
 
-## Provisional combat tuning
+Health potions restore 10 Health and Mana potions restore 8 Mana when the matching resource is below its maximum. Potions are collected during movement and therefore add no turn beyond that move.
 
-Starting Stamina is 25. Each attack costs 5 Stamina and each movement restores 10, clamped to the maximum. These are centralized provisional tuning values in `GAME_TUNING`. An attack that combines weapon effects still charges Stamina only once. A hit awards 1 XP and a kill awards the enemy's XP; excess is carried across the 100 XP threshold. Leveling increments the level count without a choice or pause.
+## Persistent ranks and equipment
 
-Combat damage is resolved as a non-negative integer. Incoming damage is rounded to the nearest integer after Defense mitigation; melee and ability damage are also normalized to whole numbers before reducing enemy Health.
+Resources use Health, Stamina, Offense, Defense, Mana, and XP meters. Defense is mainly earned from armor and shields; the base 1 Defense only provides a small starting buffer. Equipment modifiers remain visible in the attribute panel.
 
-## Potions and death
+The five persistent ranks start at zero and apply deterministic effects:
 
-Health and Mana potions refill the matching resource directly when below its maximum. They do not enter Inventory. At maximum, a potion remains on its world tile while the player walks over it. Walking does not regenerate Health or Mana.
+| Rank | Effect |
+| --- | --- |
+| Vitality | +3 maximum Health per rank |
+| Strength | +1 weapon Offense per rank |
+| Luck | +1 deterministic chest/discovery loot tier for every two ranks |
+| Recovery | +1 Stamina restored by each accepted ground move per rank |
+| Stealth | -1 effective enemy awareness tile for every two ranks, to a minimum of one |
 
-Death resets the realm and run equipment/Inventory but retains base attributes, level/XP progress, and ability assignments. Equipment-derived maxima are removed with run equipment, and the fresh run's current resources use its new maxima.
+When XP reaches its threshold, play pauses after the action that earned it and presents three distinct stat choices from a deterministic rotation. Choosing a stat applies its effect immediately and costs no additional turn. Further tactical actions are rejected until the pending choice is resolved.
+
+## Mana abilities and death
+
+Heal restores up to 8 Health for 5 Mana. Wand targets the nearest enemy in eight Manhattan tiles and deals 7 deterministic damage for 4 Mana. Invalid or unaffordable casts do not spend Mana or advance time.
+
+Death resets the realm and run equipment/Inventory but retains persistent ranks, level/XP progress, and ability assignments. Resource fullness is preserved when a maximum changes through an upgrade, migration, or equipment change.

@@ -1,4 +1,4 @@
-import { createCampaign, isResourcesModel, upgradeCampaignResources } from "./dungeon.js";
+import { createCampaign, effectiveAttributes, FLOOR_HEIGHT, FLOOR_WIDTH, isResourcesModel, upgradeCampaignResources } from "./dungeon.js";
 import { gameZoomPresets } from "../content/world/zoom.js";
 
 const PREFIX = "cryptbound.slot.";
@@ -7,7 +7,8 @@ const PREFERENCE_KEY = "cryptbound.preferences.v1";
 export const SLOT_IDS = Object.freeze(["1", "2", "3"]);
 export const DEFAULT_PREFERENCES = Object.freeze({ zoom: 1, camera: "center", fullscreenDesired: false, sfxVolume: 80, musicVolume: 20, muteAll: false });
 
-export function isValidCampaign(value) { return value?.version === 2 && value.progression?.attributes && value.floor?.map && value.player?.equipment && Array.isArray(value.player.inventory); }
+export function isValidCampaign(value) { return value?.version === 3 && value.progression?.attributes && value.floor?.map && value.player?.equipment && Array.isArray(value.player.inventory); }
+function isV2Campaign(value) { return value?.version === 2 && value.progression?.attributes && value.floor?.map && value.player?.equipment && Array.isArray(value.player.inventory); }
 function validV1(value) { return value?.version === 1 && value.progression?.stats && value.floor?.map && value.player?.equipment; }
 function oldItem(item, id) {
   const group = /head|body|leg/i.test(item?.slot ?? "") ? "armor" : "weapons";
@@ -25,13 +26,49 @@ function legacyEquipmentItems(equipment = {}) {
     return [oldItem(item, `legacy-${identity}`)];
   });
 }
+function expandUndersizedFloor(campaign) {
+  const source = campaign.floor.map;
+  const sourceHeight = source.length;
+  const sourceWidth = source[0]?.length ?? 0;
+  if (sourceWidth >= FLOOR_WIDTH && sourceHeight >= FLOOR_HEIGHT) return false;
+  const offsetX = Math.max(0, Math.floor((FLOOR_WIDTH - sourceWidth) / 2));
+  const offsetY = Math.max(0, Math.floor((FLOOR_HEIGHT - sourceHeight) / 2));
+  const map = Array.from({ length: FLOOR_HEIGHT }, () => Array.from({ length: FLOOR_WIDTH }, () => 1));
+  for (let y = 0; y < sourceHeight; y++) for (let x = 0; x < sourceWidth; x++) map[y + offsetY][x + offsetX] = source[y][x];
+  const shift = (position) => position && { ...position, x: position.x + offsetX, y: position.y + offsetY };
+  campaign.floor = { ...campaign.floor, width: FLOOR_WIDTH, height: FLOOR_HEIGHT, map, start: shift(campaign.floor.start), entities: (campaign.floor.entities ?? []).map(shift) };
+  campaign.player = shift(campaign.player);
+  return true;
+}
+function resourceFraction(resources, attributes, name) {
+  const current = Number(resources?.[name]?.current ?? resources?.[name] ?? attributes?.[name] ?? 0);
+  const maximum = Number(resources?.[name]?.currentMax ?? attributes?.[name] ?? 0);
+  return maximum > 0 ? Math.max(0, Math.min(1, current / maximum)) : 0;
+}
+function currentAttributesFromLegacy(attributes = {}) {
+  return {
+    vitality: Math.max(0, Number(attributes.vitality ?? 0)), strength: Math.max(0, Number(attributes.strength ?? 0)),
+    luck: Math.max(0, Number(attributes.luck ?? 0)), recovery: Math.max(0, Number(attributes.recovery ?? 0)),
+    stealth: Math.max(0, Number(attributes.stealth ?? attributes.agility ?? 0)),
+  };
+}
+function rebuildBalanceProfile(campaign, legacyAttributes, legacyResources) {
+  const fresh = createCampaign(campaign.floor.seed, campaign.progression.difficulty ?? campaign.floor.level ?? 1);
+  campaign.progression.attributes = { ...fresh.progression.attributes, ...currentAttributesFromLegacy(legacyAttributes) };
+  const caps = effectiveAttributes(campaign);
+  campaign.player.resources = Object.fromEntries(["health", "stamina", "mana"].map((name) => [name, { current: caps[name] * resourceFraction(legacyResources, legacyAttributes, name), currentMax: caps[name] }]));
+}
 export function migrateCampaign(value) {
-  if (isValidCampaign(value)) {
+  if (isValidCampaign(value) || isV2Campaign(value)) {
     const level = Number.isInteger(value.floor.level) ? value.floor.level : Number.isInteger(value.floor.depth) ? value.floor.depth : 1;
     const difficulty = Number.isInteger(value.progression.difficulty) ? value.progression.difficulty : level;
     const needsResourceMigration = !isResourcesModel(value.player.resources) || (value.floor.entities ?? []).some((entity) => entity.kind === "enemy" && !isResourcesModel(entity.resources));
-    if (value.floor.level === level && value.progression.difficulty === difficulty && !needsResourceMigration) return value;
-    const next = { ...structuredClone(value), floor: { ...structuredClone(value.floor), level }, progression: { ...structuredClone(value.progression), difficulty }, realm: value.realm ?? `Underground ${level}` };
+    const needsFloorMigration = value.floor.map.length < FLOOR_HEIGHT || (value.floor.map[0]?.length ?? 0) < FLOOR_WIDTH;
+    const needsBalanceMigration = value.version !== 3 || !Object.hasOwn(value.progression.attributes, "stealth") || !Array.isArray(value.progression.pendingUpgrades) || (value.floor.entities ?? []).some((entity) => entity.kind === "enemy" && (!Number.isFinite(entity.actionCooldown) || !Number.isFinite(entity.nextActionAt)));
+    if (value.floor.level === level && value.progression.difficulty === difficulty && !needsResourceMigration && !needsFloorMigration && !needsBalanceMigration) return value;
+    const next = { ...structuredClone(value), version: 3, floor: { ...structuredClone(value.floor), level }, progression: { ...structuredClone(value.progression), difficulty, pendingUpgrades: structuredClone(value.progression.pendingUpgrades ?? []) }, realm: value.realm ?? `Underground ${level}` };
+    expandUndersizedFloor(next);
+    if (needsBalanceMigration) rebuildBalanceProfile(next, value.progression.attributes, value.player.resources);
     return upgradeCampaignResources(next);
   }
   if (!validV1(value)) throw new Error("This save is invalid or from an unsupported version.");
@@ -45,8 +82,8 @@ export function migrateCampaign(value) {
   const stats = value.progression.stats;
   const oldHealth = stats.health ?? stats.vitality ?? value.player.maxHp ?? 25;
   const oldStamina = stats.stamina ?? 25;
-  next.progression = { attributes: { health: Math.max(1, oldHealth), stamina: Math.max(0, oldStamina), offense: Math.max(0, stats.offense ?? stats.strength ?? 0), defense: Math.max(0, stats.defense ?? 0), mana: Math.max(0, stats.mana ?? 20), vitality: 0, strength: 0, luck: 0, recovery: 0, agility: 0 }, level: value.progression.level ?? 1, xp: value.progression.xp ?? 0, nextXp: 100, totalKills: value.progression.totalKills ?? 0, difficulty: level };
-  next.player.resources = { health: Math.min(next.progression.attributes.health, value.player.resources?.health ?? value.player.hp ?? next.progression.attributes.health), stamina: Math.min(next.progression.attributes.stamina, value.player.resources?.stamina ?? oldStamina), mana: Math.min(next.progression.attributes.mana, value.player.resources?.mana ?? 20) };
+  next.progression = { attributes: { ...next.progression.attributes, ...currentAttributesFromLegacy(stats) }, level: value.progression.level ?? 1, xp: value.progression.xp ?? 0, nextXp: 100, totalKills: value.progression.totalKills ?? 0, difficulty: level, pendingUpgrades: [] };
+  next.player.resources = { health: value.player.resources?.health ?? value.player.hp ?? oldHealth, stamina: value.player.resources?.stamina ?? oldStamina, mana: value.player.resources?.mana ?? 20 };
   const legacy = legacyEquipmentItems(value.player.equipment);
   const armor = legacy.filter((item) => item.group === "armor"); const weapons = legacy.filter((item) => item.group === "weapons");
   next.player.equipment = { weapons: [weapons.shift() ?? null, weapons.shift() ?? null], armor: [armor.shift() ?? null, armor.shift() ?? null] };
@@ -55,6 +92,8 @@ export function migrateCampaign(value) {
   next.counters = { ...next.counters, ...(value.counters ?? {}) };
   next.objective = value.objective ?? next.objective;
   next.log = [];
+  expandUndersizedFloor(next);
+  rebuildBalanceProfile(next, stats, value.player.resources);
   return upgradeCampaignResources(next);
 }
 export function readSlot(storage, slot) {

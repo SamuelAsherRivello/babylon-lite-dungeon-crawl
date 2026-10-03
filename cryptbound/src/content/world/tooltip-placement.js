@@ -8,9 +8,16 @@ export function findWorldTooltipPosition(viewport, tooltip, protectedRects, gap 
   const centerX = (rect) => rect.left + rect.width / 2;
   const centerY = (rect) => rect.top + rect.height / 2;
   const hovered = protectedRects[0];
-  const step = Math.max(8, Math.min(tooltip.width, tooltip.height) / 2);
+  const minX = viewport.left + gap; const maxX = viewport.right - tooltip.width - gap;
+  const minY = viewport.top + gap; const maxY = viewport.bottom - tooltip.height - gap;
+  const xPositions = new Set([minX, maxX]); const yPositions = new Set([minY, maxY]);
+  for (const rect of protectedRects) {
+    xPositions.add(rect.left - tooltip.width - gap); xPositions.add(rect.left + rect.width + gap);
+    yPositions.add(rect.top - tooltip.height - gap); yPositions.add(rect.top + rect.height + gap);
+  }
   const candidates = [];
-  for (let y = viewport.top + gap; y + tooltip.height <= viewport.bottom - gap; y += step) for (let x = viewport.left + gap; x + tooltip.width <= viewport.right - gap; x += step) {
+  for (const y of yPositions) for (const x of xPositions) {
+    if (x < minX || x > maxX || y < minY || y > maxY) continue;
     const rect = { left: x, top: y, width: tooltip.width, height: tooltip.height };
     if (protectedRects.some((protectedRect) => overlaps(rect, protectedRect))) continue;
     candidates.push({ left: x, top: y, distance: hovered ? Math.hypot(centerX(rect) - centerX(hovered), centerY(rect) - centerY(hovered)) : 0 });

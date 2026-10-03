@@ -46,6 +46,24 @@ test('mounts the dungeon and minimap in Babylon Lite from the same world compone
   assert.doesNotMatch(source, /getContext\(["'](?:2d|webgl2?)["']/i);
 });
 
+test('uses controller-derived path availability to render an unreachable mouse reticle as black', async () => {
+  const world = await readFile(new URL('../src/content/BabylonWorld.jsx', import.meta.url), 'utf8');
+  const game = await readFile(new URL('../src/game/Game.jsx', import.meta.url), 'utf8');
+  assert.match(game, /getMousePathFromSelectedCell\(selectedGridSpot, campaign\)/);
+  assert.match(game, /selectedCellReachable=\{selectedCellReachable\}/);
+  assert.match(world, /selectedCellReachable === false \? "invalid"/);
+  assert.match(world, /grid_reticle \$\{reticleKind\}/);
+});
+
+test('uses current camera state and reconfiguration inputs when framing the main world', async () => {
+  const source = await readFile(new URL('../src/content/BabylonWorld.jsx', import.meta.url), 'utf8');
+  assert.match(source, /const \{ camera: cameraNow, zoom: zoomNow \} = latestRef\.current/);
+  assert.match(source, /mapWidth, mapHeight/);
+  assert.match(source, /const resetKey = \[/);
+  assert.match(source, /window\.devicePixelRatio/);
+  assert.match(source, /resizeSurface\(surface\); draw\(\)/);
+});
+
 test('declares and retains the provided 32-pixel Tiled dungeon assets', async () => {
   const tileset = await readFile(new URL('../public/assets/Tiled_Examples/Tilesets/Tileset_Dungeon.tsx', import.meta.url), 'utf8');
   const world = await readFile(new URL('../src/content/BabylonWorld.jsx', import.meta.url), 'utf8');

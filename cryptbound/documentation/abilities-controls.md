@@ -2,9 +2,9 @@
 
 Four positional bindings appear as 01–04 and map to keyboard keys 1–4 and the matching mobile buttons. New games bind Heal, then Wand, then two empty positions. A drag to an empty position moves the ability; a drag onto a populated position swaps them. Empty/invalid drops and return to the original position do not advance time. Accepted reassignment advances once.
 
-Heal targets the player and restores up to 10 Health for 10 Mana. Wand chooses the nearest enemy within eight Manhattan tiles, breaking equal-distance ties by stable enemy ID; it deals 8 damage for 8 Mana. These values and target rules are provisional, centralized in the ability catalog, and can be tuned independently from slot assignment. An ability without enough Mana or a valid effect target is rejected without a message or tick.
+Heal targets the player and restores up to 8 Health for 5 Mana. Wand chooses the nearest enemy within eight Manhattan tiles, breaking equal-distance ties by stable enemy ID; it deals 7 deterministic damage for 4 Mana. These values and target rules are centralized in the ability catalog. An ability without enough Mana or a valid effect target is rejected without a message or tick.
 
-Press C or the mobile Sneak control to toggle Sneak mode without advancing time. Sneak currently reduces enemy awareness from eight to four tiles. This is provisional and centralized in `GAME_TUNING`.
+Press C or the mobile Sneak control to toggle Sneak mode without advancing time. Sneak reduces enemy awareness by three tiles, after the character's Stealth reduction, and never reduces awareness below one tile. Enemy movement or attacks are also gated by each enemy's action cooldown.
 
 ## Held movement timing
 

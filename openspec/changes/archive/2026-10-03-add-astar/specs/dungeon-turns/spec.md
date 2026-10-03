@@ -17,6 +17,14 @@ A legal player step or an actionable bump interaction SHALL advance time by exac
 - **WHEN** the player attempts to move into an impassable cell with no actionable target
 - **THEN** the player stays in place and time does not advance
 
+#### Scenario: Commit equipment or ability assignment
+- **WHEN** a valid equipment drag or ability reorder is committed
+- **THEN** its change is applied before one time increment and one enemy phase
+
+#### Scenario: Settings remains open
+- **WHEN** no gameplay action is accepted while Settings is open
+- **THEN** world Time and enemies remain unchanged through the ordinary action-driven time rule
+
 #### Scenario: Unreachable mouse destination
 - **WHEN** the player selects a mouse destination with no legal cardinal path
 - **THEN** the player stays in place and time does not advance

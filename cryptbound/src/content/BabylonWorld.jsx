@@ -68,9 +68,9 @@ function releaseSharedTexture(path) {
   if (entry.refs <= 0) { entry.promise.then(releaseTexture).catch(() => {}); sharedTextures.delete(path); }
 }
 
-export function BabylonWorld({ campaign, zoom = 1, minimap = false, camera = "center", mouseInteraction = false, floatingFeedback = [], selectedCell = null, onSelectedCellChange, onZoom }) {
+export function BabylonWorld({ campaign, zoom = 1, minimap = false, camera = "center", mouseInteraction = false, floatingFeedback = [], selectedCell = null, selectedCellReachable = null, onSelectedCellChange, onZoom }) {
   const hostRef = useRef(null); const canvasRef = useRef(null); const sceneRef = useRef(null); const latestRef = useRef({ campaign, zoom, minimap, camera });
-  const cameraCenterRef = useRef({ seed: campaign.floor.seed, x: campaign.player.x, y: campaign.player.y });
+  const cameraCenterRef = useRef(null);
   const mouseDownRef = useRef(false);
   const pointerRef = useRef(null);
   const selectedCellRef = useRef(selectedCell);
@@ -79,16 +79,19 @@ export function BabylonWorld({ campaign, zoom = 1, minimap = false, camera = "ce
   const tooltipRef = useRef(null);
   latestRef.current = { campaign, zoom, minimap, camera };
   selectedCellRef.current = selectedCell;
-  const cellSizeAt = (rect) => {
+  const cellSizeAt = (rect, zoomValue = latestRef.current.zoom) => {
     const canvas = canvasRef.current;
     const backingPixelsPerCssPixel = canvas?.width > 0 && rect.width > 0 ? canvas.width / rect.width : window.devicePixelRatio || 1;
-    return getRenderedTileCssSize({ zoom: typeof zoom === "number" ? zoom : 1, devicePixelRatio: window.devicePixelRatio || 1, backingPixelsPerCssPixel });
+    return getRenderedTileCssSize({ zoom: typeof zoomValue === "number" ? zoomValue : 1, devicePixelRatio: window.devicePixelRatio || 1, backingPixelsPerCssPixel });
   };
-  const getViewCenter = (rect, state = campaign) => {
-    const tileCss = cellSizeAt(rect); const visibleWidth = rect.width / tileCss; const visibleHeight = rect.height / tileCss;
-    if (cameraCenterRef.current.seed !== state.floor.seed) cameraCenterRef.current = { seed: state.floor.seed, x: state.player.x, y: state.player.y };
-    const center = getCameraCenter({ mode: camera, player: state.player, previousCenter: cameraCenterRef.current, visibleWidth, visibleHeight });
-    cameraCenterRef.current = { seed: state.floor.seed, ...center };
+  const getViewCenter = (rect, state = latestRef.current.campaign) => {
+    const { camera: cameraNow, zoom: zoomNow } = latestRef.current;
+    const tileCss = cellSizeAt(rect, zoomNow); const visibleWidth = rect.width / tileCss; const visibleHeight = rect.height / tileCss;
+    const mapWidth = state.floor.map[0]?.length ?? 0; const mapHeight = state.floor.map.length;
+    const resetKey = [state.floor.seed, mapWidth, mapHeight, cameraNow, zoomNow, rect.width, rect.height, canvasRef.current?.width ?? 0, canvasRef.current?.height ?? 0, window.devicePixelRatio || 1].join(":");
+    const previousCenter = cameraCenterRef.current?.key === resetKey ? cameraCenterRef.current : state.player;
+    const center = getCameraCenter({ mode: cameraNow, player: state.player, previousCenter, visibleWidth, visibleHeight, mapWidth, mapHeight });
+    cameraCenterRef.current = { key: resetKey, ...center };
     return center;
   };
   const targetKindAt = (x, y) => {
@@ -240,5 +243,6 @@ export function BabylonWorld({ campaign, zoom = 1, minimap = false, camera = "ce
     return () => { observer.disconnect(); window.removeEventListener("resize", update); };
   }, [hoveredEnemy, selectedCell, campaign.player.x, campaign.player.y, zoom, camera]);
   const offsets = new Map();
-  return <div className={`babylon_world${minimap ? " babylon_world--minimap" : ""}`} ref={hostRef} data-renderer="babylon-lite" data-content-style="2d" onMouseMove={mouseInteraction ? pointerMove : undefined} onMouseLeave={mouseInteraction ? pointerLeave : undefined} onMouseDown={mouseInteraction ? pointerDown : undefined} onMouseUp={mouseInteraction ? pointerUp : undefined} onWheel={mouseInteraction ? (event) => { event.preventDefault(); onZoom?.(event.deltaY < 0 ? 1 : -1); } : undefined} onContextMenu={mouseInteraction ? (event) => event.preventDefault() : undefined}><canvas ref={canvasRef} className="babylon_world_canvas" aria-label={minimap ? "Dungeon minimap" : "Pixel-perfect dungeon map"}/>{!minimap && feedbackCenter && floatingFeedback.map((effect) => { const key = `${effect.x},${effect.y}`; const index = offsets.get(key) ?? 0; offsets.set(key, index + 1); const position = getWorldScreenPosition({ x: effect.x, y: effect.y, center: feedbackCenter, viewportWidth: feedbackRect.width, viewportHeight: feedbackRect.height, tileCssSize: feedbackCellSize }); const zoomScale = typeof zoom === "number" ? zoom : 1; return <span key={effect.id} className={`world_floating_text world_floating_text--${effect.color}`} style={{ left: position.left, top: position.top - index * 12 * zoomScale, fontSize: `${14 * zoomScale}px`, "--world-floating-travel": `${11 * zoomScale}px` }} aria-hidden="true">{effect.text}</span>; })}{hoveredEnemy && !minimap && <section ref={tooltipRef} className="enemy_world_tooltip" aria-label={`${hoveredEnemy.name} information`} style={{ left: tooltipPosition?.left ?? -10000, top: tooltipPosition?.top ?? -10000, visibility: tooltipPosition ? "visible" : "hidden" }}><div className="enemy_tooltip_section enemy_tooltip_portrait"><h2>PORTRAIT</h2><img src={hoveredEnemy.name === "Skeleton" ? texturePaths.skeleton : texturePaths.rat} alt="" /></div><div className="enemy_tooltip_section enemy_tooltip_resource_panel"><h2>RESOURCES</h2><EnemyResourceRows resources={hoveredEnemy.resources} /></div></section>}{mouseInteraction && selectedCell && reticleStyle && <i className={`grid_reticle ${targetKindAt(selectedCell.x, selectedCell.y)}`} style={reticleStyle} />}{message && <div role="status" className="babylon_world_message">{message}</div>}</div>;
+  const reticleKind = selectedCellReachable === false ? "invalid" : targetKindAt(selectedCell?.x, selectedCell?.y);
+  return <div className={`babylon_world${minimap ? " babylon_world--minimap" : ""}`} ref={hostRef} data-renderer="babylon-lite" data-content-style="2d" onMouseMove={mouseInteraction ? pointerMove : undefined} onMouseLeave={mouseInteraction ? pointerLeave : undefined} onMouseDown={mouseInteraction ? pointerDown : undefined} onMouseUp={mouseInteraction ? pointerUp : undefined} onWheel={mouseInteraction ? (event) => { event.preventDefault(); onZoom?.(event.deltaY < 0 ? 1 : -1); } : undefined} onContextMenu={mouseInteraction ? (event) => event.preventDefault() : undefined}><canvas ref={canvasRef} className="babylon_world_canvas" aria-label={minimap ? "Dungeon minimap" : "Pixel-perfect dungeon map"}/>{!minimap && feedbackCenter && floatingFeedback.map((effect) => { const key = `${effect.x},${effect.y}`; const index = offsets.get(key) ?? 0; offsets.set(key, index + 1); const position = getWorldScreenPosition({ x: effect.x, y: effect.y, center: feedbackCenter, viewportWidth: feedbackRect.width, viewportHeight: feedbackRect.height, tileCssSize: feedbackCellSize }); const zoomScale = typeof zoom === "number" ? zoom : 1; return <span key={effect.id} className={`world_floating_text world_floating_text--${effect.color}`} style={{ left: position.left, top: position.top - index * 12 * zoomScale, fontSize: `${14 * zoomScale}px`, "--world-floating-travel": `${11 * zoomScale}px` }} aria-hidden="true">{effect.text}</span>; })}{hoveredEnemy && !minimap && <section ref={tooltipRef} className="enemy_world_tooltip" aria-label={`${hoveredEnemy.name} information`} style={{ left: tooltipPosition?.left ?? -10000, top: tooltipPosition?.top ?? -10000, visibility: tooltipPosition ? "visible" : "hidden" }}><div className="enemy_tooltip_section enemy_tooltip_portrait"><h2>PORTRAIT</h2><img src={hoveredEnemy.name === "Skeleton" ? texturePaths.skeleton : texturePaths.rat} alt="" /></div><div className="enemy_tooltip_section enemy_tooltip_resource_panel"><h2>RESOURCES</h2><EnemyResourceRows resources={hoveredEnemy.resources} /></div></section>}{mouseInteraction && selectedCell && reticleStyle && <i className={`grid_reticle ${reticleKind}`} style={reticleStyle} />}{message && <div role="status" className="babylon_world_message">{message}</div>}</div>;
 }

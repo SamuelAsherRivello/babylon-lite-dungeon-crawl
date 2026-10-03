@@ -1,3 +1,16 @@
+## ADDED Requirements
+
+### Requirement: Advance Dungeon Level and persistent Difficulty at exits
+Each new campaign SHALL begin at Dungeon Level 1 and Difficulty 1. Entering an exit SHALL increase both values by one, then generate the next dungeon using the new Difficulty. Dungeon Level and Time SHALL reset to 1 and zero on death; Difficulty SHALL persist with saved character progression and continue to drive generated challenge. Difficulty SHALL remain hidden from players.
+
+#### Scenario: Enter an exit
+- **WHEN** the player enters the exit on Dungeon Level N
+- **THEN** the game starts Dungeon Level N+1 and uses Difficulty N+1 for world generation
+
+#### Scenario: Die at a later Dungeon Level
+- **WHEN** the player dies after reaching a later Dungeon Level
+- **THEN** a new Dungeon Level 1 is generated using the saved Difficulty, and Time resets to zero
+
 ## MODIFIED Requirements
 
 ### Requirement: Advance one tactical turn per accepted grid action
@@ -37,17 +50,6 @@ Bumping into an enemy, chest, or stair SHALL invoke its interaction. Stepping on
 #### Scenario: Collect while moving
 - **WHEN** a movement lands on an accepted item pickup
 - **THEN** item collection resolves during that move without another time increment
-
-### Requirement: Advance Dungeon Level and persistent Difficulty at exits
-Each new campaign SHALL begin at Dungeon Level 1 and Difficulty 1. Entering an exit SHALL increase both values by one, then generate the next dungeon using the new Difficulty. Dungeon Level and Time SHALL reset to 1 and zero on death; Difficulty SHALL persist with saved character progression and continue to drive generated challenge. Difficulty SHALL remain hidden from players.
-
-#### Scenario: Enter an exit
-- **WHEN** the player enters the exit on Dungeon Level N
-- **THEN** the game starts Dungeon Level N+1 and uses Difficulty N+1 for world generation
-
-#### Scenario: Die at a later Dungeon Level
-- **WHEN** the player dies after reaching a later Dungeon Level
-- **THEN** a new Dungeon Level 1 is generated using the saved Difficulty, and Time resets to zero
 
 ### Requirement: Resolve dual-wield attacks together
 When both Weapons positions contain attack-capable weapons, a melee bump SHALL resolve the combined weapon action before one enemy phase and one time increment. Rearranging those weapons within the group SHALL not change their combined attribute effect. A shield SHALL contribute only its defined item effects.

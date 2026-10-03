@@ -56,15 +56,35 @@ test('exposes independent persisted SFX and Music controls in Settings', async (
   assert.match(game, /aria-label="SFX volume"/); assert.match(game, /aria-label="Music volume"/); assert.match(game, /Mute All/);
   assert.match(game, /mutedByUrl=\{audio\.hardMuted\}/); assert.match(saves, /sfxVolume/); assert.match(saves, /musicVolume/);
 });
-test('lets players drag an inventory item by its visible name as well as its grip', async () => {
+test('uses the inventory grabber as the only drag source', async () => {
   const game = await readFile(new URL('../src/game/Game.jsx', import.meta.url), 'utf8');
-  assert.match(game, /<span className="drag_handle" data-drag-kind="inventory" data-drag-id=\{item\.id\}/);
-  assert.match(game, /aria-label=\{`Drag \$\{item\.name\}`\}/);
+  assert.match(game, /function SlotItem/);
+  assert.match(game, /<SlotItem key=\{item\.id\} type="inventory"/);
+  assert.match(game, /"data-drag-kind": "inventory", "data-drag-id": item\.id/);
+  assert.match(game, /"aria-label": `Drag \$\{item\.name\}`/);
+  assert.doesNotMatch(game, /dragText/);
 });
-test('lets players drag equipped items from anywhere on their populated slot row', async () => {
+test('uses the equipment grabber as the drag source while the whole row accepts drops', async () => {
   const game = await readFile(new URL('../src/game/Game.jsx', import.meta.url), 'utf8');
-  assert.match(game, /const dragSource = item \? \{ "data-drag-kind": "slot", "data-drag-id": item\.id/);
-  assert.match(game, /data-drop-group=\{group\} data-drop-index=\{index\} \{\.\.\.dragSource\}/);
+  assert.match(game, /function EquipmentItem/);
+  assert.match(game, /"data-drag-kind": "slot", "data-drag-id": item\.id/);
+  assert.match(game, /dropTarget=\{\{ "data-drop-group": group, "data-drop-index": index \}\}/);
+  assert.doesNotMatch(game, /dragWholeRow/);
+});
+test('uses SlotItem for vertically aligned abilities and equipment', async () => {
+  const [game, css] = await Promise.all(['src/game/Game.jsx', 'src/ui/style.css'].map((path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8')));
+  assert.match(game, /<SlotItem type="ability" number=\{index\}/);
+  assert.match(game, /accentColor="#c0aaff"/);
+  assert.match(game, /Card title="Equipment"/);
+  assert.match(game, /<EquipmentItem key=\{index\}/);
+  assert.match(css, /\.slot_item \{[^}]*align-items:center/);
+  assert.match(css, /\.slot_item_number,\.slot_item_icon \{ color:var\(--slot-accent-color,#c6b994\)/);
+  assert.doesNotMatch(css, /\.slot_item--ability \{/);
+});
+test('centers an empty equipment slot marker', async () => {
+  const [game, css] = await Promise.all(['src/game/Game.jsx', 'src/ui/style.css'].map((path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8')));
+  assert.match(game, /type === "ability" \? "" : "\+"/);
+  assert.match(css, /\.slot_item \.empty_slot\{display:grid;flex:1;place-items:center/);
 });
 test('renders transient item drag feedback without intercepting drops', async () => {
   const [game, css] = await Promise.all(['src/game/Game.jsx', 'src/ui/style.css'].map((path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8')));
@@ -74,4 +94,12 @@ test('renders transient item drag feedback without intercepting drops', async ()
   assert.match(game, /cancelPointerDrag = useCallback\(\(\) => \{ pointerDragRef\.current = null; setPreview\(null\); setDragPresentation\(null\); \}/);
   assert.match(game, /window\.addEventListener\("pointercancel", pointerCancel\)/);
   assert.match(css, /\.item_drag_preview\{[^}]*pointer-events:none/); assert.match(css, /\.drag_departure/); assert.match(css, /\.drag_landing/);
+});
+
+test('renders the Stealth stat and level-up chooser from game-rule state', async () => {
+  const game = await readFile(new URL('../src/game/Game.jsx', import.meta.url), 'utf8');
+  assert.match(game, /\["vitality", "strength", "luck", "recovery", "stealth"\]/);
+  assert.match(game, /export function LevelUpChooser/);
+  assert.match(game, /choose-upgrade/);
+  assert.match(game, /Level \{pending\.level\}: Choose a Stat/);
 });

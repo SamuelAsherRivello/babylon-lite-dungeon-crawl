@@ -21,18 +21,24 @@ test("keeps a UI tooltip inside the viewport when its trigger is near each edge"
   }
 });
 
-test("prefers a clear position below the trigger and moves above when needed", () => {
+test("prefers the side opposite the trigger and vertically centers on it", () => {
   const viewport = { left: 0, top: 0, right: 400, bottom: 300 };
-  const tooltip = { width: 100, height: 40 };
-  assert.deepEqual(findTooltipPosition(viewport, { left: 20, top: 20, right: 50, bottom: 40 }, tooltip), { left: 20, top: 48 });
-  assert.deepEqual(findTooltipPosition(viewport, { left: 20, top: 260, right: 50, bottom: 280 }, tooltip), { left: 20, top: 212 });
+  const tooltip = { width: 100, height: 20 };
+  assert.deepEqual(findTooltipPosition(viewport, { left: 20, top: 90, right: 50, bottom: 110 }, tooltip), { left: 58, top: 90 });
+  assert.deepEqual(findTooltipPosition(viewport, { left: 350, top: 90, right: 380, bottom: 110 }, tooltip), { left: 242, top: 90 });
+});
+
+test("keeps a narrow viewport tooltip inside and centers vertically when possible", () => {
+  const viewport = { left: 0, top: 0, right: 180, bottom: 200 };
+  const position = findTooltipPosition(viewport, { left: 150, top: 75, right: 170, bottom: 95 }, { width: 120, height: 16 });
+  assert.deepEqual(position, { left: 22, top: 77 });
 });
 
 test("translates a fitted viewport tooltip from viewport coordinates to page coordinates", () => {
   const viewport = { left: 0, top: 0, right: 800, bottom: 450, originLeft: 240, originTop: 120 };
   const target = { left: 560, top: 180, right: 620, bottom: 210 };
   const result = findTooltipPosition(viewport, target, { width: 140, height: 40 });
-  assert.deepEqual(result, { left: 320, top: 98 });
+  assert.deepEqual(result, { left: 388, top: 55 });
 });
 
 test("wires UI tooltips to pointer and keyboard focus with accessible descriptions", async () => {
@@ -47,9 +53,20 @@ test("wires UI tooltips to pointer and keyboard focus with accessible descriptio
   assert.match(tooltip, /role="tooltip"/);
   assert.match(tooltip, /aria-describedby/);
   assert.match(tooltip, /createPortal\(/);
+  assert.match(tooltip, /import \{ createPortal \} from "react-dom"/);
   assert.match(tooltip, /new ResizeObserver\(update\)/);
   assert.match(game, /<Tooltip key=\{name\} content=\{resourceHelp\[name\]\}/);
   assert.match(game, /className="resource_tooltip_trigger"/);
+  assert.match(game, /className="card_title_trigger"/);
+  assert.match(game, /className="attribute_tooltip_trigger"/);
+  assert.match(game, /const cardHelp =/);
+  assert.match(game, /const attributeHelp =/);
+  assert.match(game, /function abilityHelp\(/);
+  assert.match(game, /function equipmentSlotHelp\(/);
+  assert.match(game, /tooltip=\{abilityHelp\(ability, index\)\}/);
+  assert.match(game, /tooltip=\{equipmentSlotHelp\(item, group, index\)\}/);
+  assert.match(game, /<Tooltip content="Show the movement and ability controls\."/);
+  assert.match(game, /<Tooltip content="Show resources, attributes, equipment, inventory, quest, and log\."/);
 });
 
 test("renders and measures the in-world tooltip after its React node mounts", async () => {

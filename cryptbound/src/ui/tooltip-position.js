@@ -5,20 +5,20 @@ export function findTooltipPosition(viewport, target, tooltip, gap = 8) {
     top: target.top - (viewport.originTop ?? 0),
     bottom: target.bottom - (viewport.originTop ?? 0),
   };
-  const candidates = [
-    { left: localTarget.left, top: localTarget.bottom + gap },
-    { left: localTarget.left, top: localTarget.top - tooltip.height - gap },
-    { left: localTarget.right - tooltip.width, top: localTarget.bottom + gap },
-    { left: localTarget.right - tooltip.width, top: localTarget.top - tooltip.height - gap },
-  ];
-  const fits = candidates.find(({ left, top }) => left >= viewport.left && top >= viewport.top && left + tooltip.width <= viewport.right && top + tooltip.height <= viewport.bottom);
-  const candidate = fits ?? candidates[0];
   const minimumLeft = viewport.left + gap;
   const maximumLeft = Math.max(minimumLeft, viewport.right - tooltip.width - gap);
   const minimumTop = viewport.top + gap;
   const maximumTop = Math.max(minimumTop, viewport.bottom - tooltip.height - gap);
+  const centeredTop = (localTarget.top + localTarget.bottom - tooltip.height) / 2;
+  const top = Math.max(minimumTop, Math.min(centeredTop, maximumTop));
+  const candidates = [
+    { left: localTarget.right + gap, top },
+    { left: localTarget.left - tooltip.width - gap, top },
+  ];
+  const candidate = candidates.find(({ left }) => left >= minimumLeft && left <= maximumLeft)
+    ?? { left: localTarget.left >= (viewport.left + viewport.right) / 2 ? candidates[1].left : candidates[0].left, top };
   return {
     left: Math.max(minimumLeft, Math.min(candidate.left, maximumLeft)),
-    top: Math.max(minimumTop, Math.min(candidate.top, maximumTop)),
+    top: candidate.top,
   };
 }
