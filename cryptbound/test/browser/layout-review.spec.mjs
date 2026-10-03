@@ -11,7 +11,7 @@ async function startGame(page) {
   await page.goto(appPath);
   await page.getByRole("button", { name: /Saved Game 1/ }).click();
   await expect(page.locator(".command_desk")).toBeVisible();
-  await expect(page.locator(".game_title")).toBeVisible();
+  await expect(page.locator(".titlebar_identity")).toHaveText("Dungeon Roguelite (DR)");
 }
 
 async function capture(page, name) {

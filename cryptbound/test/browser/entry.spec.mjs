@@ -7,7 +7,6 @@ test("@smoke opens the muted saved-game entry screen", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Dungeon Roguelite (DR)" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "3 Saved Games" })).toBeVisible();
   await expect(page.getByRole("button", { name: /Saved Game [1-3]/ })).toHaveCount(3);
-  await expect(page.getByRole("button", { name: "Tooltip help" })).toBeVisible();
 });
 
 test("@smoke resolves a visible level-up choice without another turn", async ({ page }) => {

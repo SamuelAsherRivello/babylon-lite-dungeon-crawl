@@ -42,10 +42,14 @@ test('removes fitted gutters while the browser surface is fullscreen', async () 
 test('uses a command desk and removes template corner units', async () => {
   const [game, app, css] = await Promise.all(['src/game/Game.jsx', 'src/ui/App.jsx', 'src/ui/style.css'].map((path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8')));
   assert.match(game, /PrimaryInfoPanel/); assert.match(game, /SecondaryInfoPanel/); assert.match(game, /3 Saved Games/); assert.match(game, /Dev Settings/);
-  assert.match(game, /className="titlebar_left"/); assert.match(game, /className="titlebar_right"/); assert.match(game, /World: 1/);
+  assert.match(game, /className="titlebar_left"/); assert.match(game, /className="titlebar_right"/); assert.match(game, /className="titlebar_identity"/); assert.match(game, /className="titlebar_progress"/); assert.match(game, /World: 1/);
+  assert.match(game, /className="titlebar_identity">Dungeon Roguelite \(DR\)<\/span>/);
+  assert.match(game, /className="titlebar_utility"/); assert.match(css, /\.titlebar_utility \{[^}]*align-items:center[^}]*padding:0 \.35em/);
+  assert.match(game, /<option value="deadzone">Deadzone<\/option>/);
   assert.doesNotMatch(app, /AppCorner/); assert.match(css, /mobile_controls/);
   assert.match(css, /grid-template-rows:4% 92% 4%/); assert.match(css, /grid-template-rows:4% 46% 4% 46%/);
   assert.match(css, /grid-template-columns:minmax\(0,56%\) minmax\(0,44%\)/);
+  assert.match(css, /\.titlebar_identity \{[^}]*background:#1a1720/); assert.match(css, /\.titlebar_progress \{[^}]*justify-content:center/);
   assert.match(css, /align-items:center/);
 });
 test('returns to the saved-game menu when a player death event is committed', async () => {
