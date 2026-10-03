@@ -42,8 +42,10 @@ test('removes fitted gutters while the browser surface is fullscreen', async () 
 test('uses a command desk and removes template corner units', async () => {
   const [game, app, css] = await Promise.all(['src/game/Game.jsx', 'src/ui/App.jsx', 'src/ui/style.css'].map((path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8')));
   assert.match(game, /PrimaryInfoPanel/); assert.match(game, /SecondaryInfoPanel/); assert.match(game, /3 Saved Games/); assert.match(game, /Dev Settings/);
+  assert.match(game, /className="titlebar_left"/); assert.match(game, /className="titlebar_right"/); assert.match(game, /World: 1/);
   assert.doesNotMatch(app, /AppCorner/); assert.match(css, /mobile_controls/);
   assert.match(css, /grid-template-rows:4% 92% 4%/); assert.match(css, /grid-template-rows:4% 46% 4% 46%/);
+  assert.match(css, /grid-template-columns:minmax\(0,56%\) minmax\(0,44%\)/);
   assert.match(css, /align-items:center/);
 });
 test('returns to the saved-game menu when a player death event is committed', async () => {
@@ -56,15 +58,17 @@ test('exposes independent persisted SFX and Music controls in Settings', async (
   assert.match(game, /aria-label="SFX volume"/); assert.match(game, /aria-label="Music volume"/); assert.match(game, /Mute All/);
   assert.match(game, /mutedByUrl=\{audio\.hardMuted\}/); assert.match(saves, /sfxVolume/); assert.match(saves, /musicVolume/);
 });
-test('uses the inventory grabber as the only drag source', async () => {
+test('uses the inventory grabber as a cue while the whole row is draggable', async () => {
   const game = await readFile(new URL('../src/game/Game.jsx', import.meta.url), 'utf8');
   assert.match(game, /function SlotItem/);
   assert.match(game, /<SlotItem key=\{item\.id\} type="inventory"/);
   assert.match(game, /"data-drag-kind": "inventory", "data-drag-id": item\.id/);
   assert.match(game, /"aria-label": `Drag \$\{item\.name\}`/);
-  assert.doesNotMatch(game, /dragText/);
+  assert.match(game, /\{\.\.\.dropTarget\} \{\.\.\.dragSource\}/);
+  const css = await readFile(new URL('../src/ui/style.css', import.meta.url), 'utf8');
+  assert.match(css, /\.slot_item\[data-drag-kind\]\{cursor:grab/);
 });
-test('uses the equipment grabber as the drag source while the whole row accepts drops', async () => {
+test('makes equipment rows draggable and droppable everywhere', async () => {
   const game = await readFile(new URL('../src/game/Game.jsx', import.meta.url), 'utf8');
   assert.match(game, /function EquipmentItem/);
   assert.match(game, /"data-drag-kind": "slot", "data-drag-id": item\.id/);

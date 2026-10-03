@@ -61,10 +61,14 @@ test("wires UI tooltips to pointer and keyboard focus with accessible descriptio
   assert.match(game, /className="attribute_tooltip_trigger"/);
   assert.match(game, /const cardHelp =/);
   assert.match(game, /const attributeHelp =/);
-  assert.match(game, /function abilityHelp\(/);
-  assert.match(game, /function equipmentSlotHelp\(/);
-  assert.match(game, /tooltip=\{abilityHelp\(ability, index\)\}/);
-  assert.match(game, /tooltip=\{equipmentSlotHelp\(item, group, index\)\}/);
+  assert.match(game, /function abilityHelp\(ability\)/);
+  assert.match(game, /function equipmentSlotHelp\(item\)/);
+  assert.match(game, /tooltip=\{abilityHelp\(ability\)\}/);
+  assert.match(game, /tooltip=\{equipmentSlotHelp\(item\)\}/);
+  assert.doesNotMatch(game, /Key \$\{index \+ 1\}|slotName/);
+  assert.doesNotMatch(game, /tooltip_demo_trigger|Tooltip help/);
+  const css = await readFile(new URL("../src/ui/style.css", import.meta.url), "utf8");
+  assert.doesNotMatch(css, /tooltip_demo_trigger/);
   assert.match(game, /<Tooltip content="Show the movement and ability controls\."/);
   assert.match(game, /<Tooltip content="Show resources, attributes, equipment, inventory, quest, and log\."/);
 });
