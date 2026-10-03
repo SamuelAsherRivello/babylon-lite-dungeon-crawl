@@ -10,9 +10,9 @@ import { describeInventoryDrop, previewInventoryDrop, resolveInventoryDrop } fro
 import { getCameraCenter, getWorldCellAtScreenPosition, getWorldCellScreenCenter, getWorldScreenPosition, WorldRender } from '../src/content/world/WorldRender.js';
 import { findWorldTooltipPosition } from '../src/content/world/tooltip-placement.js';
 import { gameZoomPresets, getTileCssSize } from '../src/content/world/zoom.js';
-import { migrateCampaign, readPreferences, readSlot, readSlotSummary, writePreferences, writeSlot } from '../src/game/saves.js';
+import { clearCryptboundStorage, migrateCampaign, readPreferences, readSlot, readSlotSummary, writePreferences, writeSlot } from '../src/game/saves.js';
 
-class MemoryStorage { values = new Map(); getItem(key) { return this.values.get(key) ?? null; } setItem(key, value) { this.values.set(key, String(value)); } }
+class MemoryStorage { values = new Map(); get length() { return this.values.size; } key(index) { return [...this.values.keys()][index] ?? null; } getItem(key) { return this.values.get(key) ?? null; } setItem(key, value) { this.values.set(key, String(value)); } removeItem(key) { this.values.delete(key); } }
 
 test('projects player Health changes and enemy hits into positioned transient text', () => {
   const effects = projectFloatingFeedback([
@@ -67,10 +67,10 @@ test('starts a v3 campaign with approved deterministic attributes and bindings',
   assert.equal(campaign.floor.level, 1); assert.equal(campaign.progression.difficulty, 1);
   assert.deepEqual(campaign.progression.attributes, { health: 30, stamina: 16, offense: 0, defense: 1, mana: 12, vitality: 0, strength: 0, luck: 0, recovery: 0, stealth: 0 });
   assert.deepEqual(campaign.player.abilities, ['heal', 'wand', null, null]);
-  assert.deepEqual(campaign.player.equipment, { weapons: [null, null], armor: [null, null] });
+  assert.deepEqual(campaign.player.equipment, { weapons: [{ id: 'starter-stick', name: 'Wooden Stick', group: 'weapons', modifiers: { offense: 8 } }, null], armor: [null, null] });
   assert.deepEqual(campaign.player.resources, {
     health: { current: 30, currentMax: 30 }, stamina: { current: 16, currentMax: 16 },
-    offense: { current: 0, currentMax: 0 }, defense: { current: 1, currentMax: 1 },
+    offense: { current: 8, currentMax: 8 }, defense: { current: 1, currentMax: 1 },
     mana: { current: 12, currentMax: 12 }, xp: { current: 0, currentMax: 100, level: 1 },
   });
   assert.equal(campaign.player.inventoryCapacity, 10); assert.deepEqual(campaign.player.inventory, []);
@@ -87,14 +87,14 @@ test('accepted move and equipment changes emit events and cost one time unit', (
   assert.ok(move.events.some((event) => event.type === 'player.moved'));
   const item = { id: 'sword', name: 'Iron Sword 01', group: 'weapons', modifiers: { offense: 8 } };
   move.state.player.inventory = [item];
-  const equip = applyAction(move.state, { type: 'equip', itemId: item.id, group: 'weapons', index: 0 });
+  const equip = applyAction(move.state, { type: 'equip', itemId: item.id, group: 'weapons', index: 1 });
   assert.equal(equip.state.floor.time, 2); assert.equal(equip.state.player.inventory.length, 0);
   assert.ok(equip.events.some((event) => event.type === 'equipment.changed'));
 });
 
 test('drag previews are pure and show equipment attribute changes before commit', () => {
   const campaign = createCampaign(3); const item = { id: 'shield', name: 'Oak Shield 03', group: 'weapons', modifiers: { defense: 6 } };
-  const before = effectiveAttributes(campaign); const after = previewEquipment(campaign, item, 'weapons', 0);
+  const before = effectiveAttributes(campaign); const after = previewEquipment(campaign, item, 'weapons', 1);
   assert.equal(after.defense, before.defense + 6); assert.deepEqual(effectiveAttributes(campaign), before);
 });
 
@@ -144,6 +144,42 @@ test('migrates legacy campaigns without losing world progress or duplicating equ
   assert.equal(migrated.progression.attributes.stealth, 0); assert.equal(migrated.progression.attributes.strength, 999);
   const items = [...migrated.player.equipment.weapons, ...migrated.player.equipment.armor, ...migrated.player.inventory].filter(Boolean);
   assert.equal(items.length, 2); assert.equal(new Set(items.map((item) => item.id)).size, 2);
+});
+
+test('clears only Cryptbound local storage records', () => {
+  const storage = new MemoryStorage();
+  storage.setItem('cryptbound.slot.1', 'save'); storage.setItem('cryptbound.slot.v1-backup.1', 'backup'); storage.setItem('cryptbound.preferences.v1', 'preferences'); storage.setItem('unrelated.preference', 'keep');
+  clearCryptboundStorage(storage);
+  assert.equal(storage.getItem('cryptbound.slot.1'), null); assert.equal(storage.getItem('cryptbound.slot.v1-backup.1'), null); assert.equal(storage.getItem('cryptbound.preferences.v1'), null); assert.equal(storage.getItem('unrelated.preference'), 'keep');
+});
+
+test('a fresh player can defeat three adjacent basic enemies without dying', () => {
+  let campaign = createCampaign(305); const { x, y } = campaign.player;
+  const enemies = [
+    { id: 'east-rat', x: x + 1, y },
+    { id: 'north-rat', x, y: y - 1 },
+    { id: 'south-rat', x, y: y + 1 },
+  ].map((position) => ({ ...position, kind: 'enemy', name: 'Cave Rat', hp: 12, maxHp: 12, damage: 3, xp: 1, awareness: 6, actionCooldown: 2, nextActionAt: 2 }));
+  campaign.floor.entities = enemies;
+  for (const enemy of enemies) campaign.floor.map[enemy.y][enemy.x] = 0;
+
+  for (const direction of ['e', 'e', 'n', 'n', 's', 's']) campaign = applyAction(campaign, { type: 'move', direction }).state;
+
+  assert.equal(campaign.floor.entities.filter((entity) => entity.kind === 'enemy').length, 0);
+  assert.equal(campaign.player.resources.health.current, 24);
+  assert.equal(campaign.log.some((entry) => entry.type === 'player.died'), false);
+});
+
+test('Skeletons are tougher than Rats on the same floor', () => {
+  let pair = null;
+  for (let seed = 1; seed <= 30 && !pair; seed++) {
+    const enemies = generateFloor(2, seed).entities.filter((entity) => entity.kind === 'enemy');
+    const rat = enemies.find((entity) => entity.name === 'Rat'); const skeleton = enemies.find((entity) => entity.name === 'Skeleton');
+    if (rat && skeleton) pair = { rat, skeleton };
+  }
+  assert.ok(pair);
+  assert.ok(pair.skeleton.maxHp > pair.rat.maxHp);
+  assert.ok(pair.skeleton.damage > pair.rat.damage);
 });
 
 test('generates centered 100 by 100 floors and leaves expanded campaigns untouched', () => {
@@ -310,7 +346,7 @@ test('preserves resource fullness when equipment changes maxima and handles zero
   assert.equal(resourceState(result.state).offense.current, Math.round(resourceState(result.state).offense.currentMax * combatReadiness(16, 16)));
   result.state.progression.attributes.stamina = 0; result.state.player.resources.stamina.current = 0;
   upgradeCampaignResources(result.state);
-  assert.equal(resourceState(result.state).offense.current, 0); assert.equal(resourceState(result.state).defense.current, 1);
+  assert.equal(resourceState(result.state).offense.current, 6); assert.equal(resourceState(result.state).defense.current, 1);
 });
 
 test('potion pickups refill directly below cap and remain when already full', () => {
@@ -386,7 +422,7 @@ test('death starts a clean run while preserving persistent progression and bindi
   assert.equal(result.state.realm, 'Underground 1'); assert.equal(result.state.floor.level, 1); assert.equal(result.state.floor.time, 0); assert.equal(result.state.progression.difficulty, 10);
   assert.equal(result.state.progression.level, 4); assert.equal(result.state.progression.xp, 27);
   assert.equal(result.state.progression.attributes.strength, 14); assert.deepEqual(result.state.player.abilities, ['wand', 'heal', null, null]);
-  assert.deepEqual(result.state.player.inventory, []); assert.deepEqual(result.state.player.equipment.weapons, [null, null]);
+  assert.deepEqual(result.state.player.inventory, []); assert.deepEqual(result.state.player.equipment.weapons, [{ id: 'starter-stick', name: 'Wooden Stick', group: 'weapons', modifiers: { offense: 8 } }, null]);
   assert.deepEqual(result.state.counters, { keys: 1, gold: 55 });
   assert.ok(result.events.some((event) => event.type === 'player.died'));
 });
@@ -398,7 +434,7 @@ test('inventory collection is alphabetical, capacity bounded, and equipment comm
   const armor = { id: 'a-armor', name: 'A Armor', group: 'armor', modifiers: { defense: 2 } };
   campaign.floor.entities = [{ id: 'loot-z', kind: 'item', x, y, item: sword }];
   const picked = applyAction(campaign, { type: 'move', direction: 'e' });
-  assert.deepEqual(picked.state.player.equipment.weapons, [null, null]); assert.equal(picked.state.player.inventory[0].id, sword.id);
+  assert.deepEqual(picked.state.player.equipment.weapons, [{ id: 'starter-stick', name: 'Wooden Stick', group: 'weapons', modifiers: { offense: 8 } }, null]); assert.equal(picked.state.player.inventory[0].id, sword.id);
   picked.state.player.inventory.push(armor); picked.state.player.inventory.sort((a, b) => a.name.localeCompare(b.name));
   const equipped = applyAction(picked.state, { type: 'equip', itemId: armor.id, group: 'armor', index: 1 });
   assert.equal(equipped.state.floor.time, picked.state.floor.time + 1); assert.equal(equipped.state.player.equipment.armor[1].id, armor.id);
@@ -433,8 +469,8 @@ test('drag resolver previews and commits only relevant compatible destinations',
 test('drag descriptions share valid drop actions with transient equip and unequip previews', () => {
   const campaign = createCampaign(401); const stick = { id: 'stick', name: 'Wooden Stick', group: 'weapons', modifiers: { offense: 3 } };
   campaign.player.inventory = [stick]; const baseline = effectiveAttributes(campaign);
-  const equip = describeInventoryDrop(campaign, { kind: 'inventory', item: stick }, { kind: 'slot', group: 'weapons', index: 0 });
-  assert.deepEqual(equip.action, { type: 'equip', itemId: stick.id, group: 'weapons', index: 0 }); assert.equal(equip.preview.offense, baseline.offense + 3);
+  const equip = describeInventoryDrop(campaign, { kind: 'inventory', item: stick }, { kind: 'slot', group: 'weapons', index: 1 });
+  assert.deepEqual(equip.action, { type: 'equip', itemId: stick.id, group: 'weapons', index: 1 }); assert.equal(equip.preview.offense, baseline.offense + 3);
   assert.equal(describeInventoryDrop(campaign, { kind: 'inventory', item: stick }, { kind: 'slot', group: 'armor', index: 0 }), null);
   assert.equal(describeInventoryDrop(campaign, { kind: 'inventory', item: stick }, { kind: 'slot', group: 'weapons', index: 0 }, { id: 'occupied' }), null);
   const equipped = createCampaign(402); equipped.player.equipment.weapons[0] = stick; const equippedBaseline = effectiveAttributes(equipped);
@@ -566,6 +602,7 @@ test('integrates collect, equipment preview and reorder, ability, potion, descen
   state.floor.entities = [{ id: 'world-sword', kind: 'item', x, y, item: loot }];
   const collected = applyAction(state, { type: 'move', direction: 'e' }); state = collected.state;
   assert.ok(collected.events.some((event) => event.type === 'item.collected'));
+  state.player.equipment.weapons = [null, null];
   const preview = previewInventoryDrop(state, { kind: 'inventory', item: loot }, 'weapons', 0, null);
   assert.ok(preview); assert.equal(state.player.equipment.weapons[0], null); // Preview/cancel leaves source untouched.
   const equipped = applyAction(state, { type: 'equip', itemId: loot.id, group: 'weapons', index: 0 }); state = equipped.state;

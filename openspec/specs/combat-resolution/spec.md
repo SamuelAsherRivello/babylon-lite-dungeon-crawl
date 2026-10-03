@@ -35,8 +35,15 @@ Health and Mana SHALL be restored only by their matching potions or explicit abi
 - **THEN** the potion restores the configured Mana amount without exceeding the maximum and is removed from the floor
 
 ### Requirement: Meet the floor-one encounter target
-The initial character, starting weapon, and basic floor-one enemy SHALL be tuned so the basic enemy is defeated by approximately two full-Stamina player melee attacks and the player at full Health and Stamina survives approximately three successful basic-enemy attacks.
+The initial character, equipped starting weapon, and basic floor-one enemy SHALL be tuned so the basic enemy is defeated by approximately two player melee attacks and a player at full Health and Stamina can defeat three adjacent basic floor-one enemies without dying.
 
 #### Scenario: Evaluate the opening encounter
-- **WHEN** a new character with the nearby starting weapon fights one basic floor-one enemy without healing or equipment upgrades
-- **THEN** the configured deterministic values meet the two-attack defeat and three-hit survival targets
+- **WHEN** a new character with the equipped starting weapon fights one basic floor-one enemy without healing or equipment upgrades
+- **THEN** the configured deterministic values meet the two-attack defeat target and leave the player alive after defeating three adjacent basic enemies
+
+### Requirement: Differentiate Rat and Skeleton threats
+The game SHALL use Rats as the approachable basic enemy and Skeletons as a tougher enemy type beginning on floor two. A same-floor Skeleton SHALL have greater Health and attack than a Rat.
+
+#### Scenario: Floor-two enemy generation
+- **WHEN** a floor-two enemy is generated as a Skeleton
+- **THEN** it has greater Health and attack than a floor-two Rat

@@ -114,6 +114,14 @@ export function writeSlot(storage, slot, campaign) {
   storage.setItem(PREFIX + slot, JSON.stringify({ ...campaign, savedAt: Date.now() }));
 }
 export function deleteSlot(storage, slot) { if (!SLOT_IDS.includes(String(slot))) throw new Error("Unknown Saved Game."); storage.removeItem(PREFIX + slot); }
+export function clearCryptboundStorage(storage) {
+  const keys = [];
+  for (let index = 0; index < storage.length; index++) {
+    const key = storage.key(index);
+    if (key === PREFERENCE_KEY || key?.startsWith(PREFIX) || key?.startsWith(BACKUP_PREFIX)) keys.push(key);
+  }
+  keys.forEach((key) => storage.removeItem(key));
+}
 export function readSlotSummary(storage) { return SLOT_IDS.map((slot) => { try { const state = readSlot(storage, slot); return { slot, occupied: Boolean(state), level: state?.floor.level ?? state?.floor.depth ?? null, xpLevel: state?.progression.level ?? null }; } catch (error) { return { slot, occupied: true, invalid: true, error: error.message }; } }); }
 function normalizeVolume(value, fallback) { return Number.isInteger(value) && value >= 0 && value <= 100 ? value : fallback; }
 export function normalizePreferences(value) { return { zoom: gameZoomPresets.includes(value?.zoom) ? value.zoom : DEFAULT_PREFERENCES.zoom, camera: ["center", "deadzone", "screen"].includes(value?.camera) ? value.camera : DEFAULT_PREFERENCES.camera, fullscreenDesired: value?.fullscreenDesired === true, sfxVolume: normalizeVolume(value?.sfxVolume, DEFAULT_PREFERENCES.sfxVolume), musicVolume: normalizeVolume(value?.musicVolume, DEFAULT_PREFERENCES.musicVolume), muteAll: value?.muteAll === true }; }

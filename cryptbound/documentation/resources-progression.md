@@ -2,7 +2,7 @@
 
 ## Deterministic combat resources
 
-New characters begin with 30 Health, 16 Stamina, 12 Mana, and 1 innate Defense. The nearby Wooden Stick deals 6 base damage. A basic floor-one enemy has 12 Health, 11 attack, 6-tile awareness, and acts every two turns once aware. This makes the opening enemy take two full-Stamina stick attacks to defeat while a full-health character survives three of its hits.
+New characters begin with 30 Health, 16 Stamina, 12 Mana, and 1 innate Defense. They begin with an equipped Wooden Stick that deals 8 base damage. A basic floor-one Rat has 12 Health, 3 attack, 6-tile awareness, and acts every two turns once aware. This makes the opening enemy take two stick attacks to defeat, while a full-health character can walk directly into and defeat three adjacent Rats without dying. Skeletons begin appearing from floor two; they are the tougher type, starting at 20 Health and 6 attack.
 
 Attacks cost 4 Stamina. Each accepted ground move restores 2 Stamina plus the Recovery rank, without exceeding maximum Stamina. Health and Mana never regenerate from movement. Current Stamina produces a deterministic readiness multiplier from 75% to 100%: it applies to both weapon Offense and Defense. An enemy hit is its attack minus effective Defense, with a minimum of 1 damage; there are no hit, critical, block, or damage-range rolls.
 

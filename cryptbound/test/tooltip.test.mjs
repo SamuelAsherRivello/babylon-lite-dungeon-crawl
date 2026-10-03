@@ -69,8 +69,30 @@ test("wires UI tooltips to pointer and keyboard focus with accessible descriptio
   assert.doesNotMatch(game, /tooltip_demo_trigger|Tooltip help/);
   const css = await readFile(new URL("../src/ui/style.css", import.meta.url), "utf8");
   assert.doesNotMatch(css, /tooltip_demo_trigger/);
-  assert.match(game, /<Tooltip content="Show the movement and ability controls\."/);
-  assert.match(game, /<Tooltip content="Show resources, attributes, equipment, inventory, quest, and log\."/);
+  assert.match(css, /\.ui_tooltip \{[^}]*max-width:min\(38ch/);
+  assert.doesNotMatch(css, /\.ui_tooltip \{[^}]*text-overflow/);
+  assert.match(game, /function inventoryItemHelp\(item\)/);
+  assert.match(game, /tooltip=\{inventoryItemHelp\(item\)\}/);
+  assert.match(game, /No stats · Double-click to equip\./);
+  assert.match(game, /<Tooltip content="Show movement and ability controls\."/);
+  assert.match(game, /<Tooltip content="Show stats, gear, quest, and log\."/);
+  assert.match(game, /<Tooltip content="Time advances with each move\."/);
+  assert.match(game, /<Tooltip content="Gold pays for goods\."/);
+  assert.match(game, /<Tooltip content="Keys open doors\."/);
+  assert.match(game, /<div className="titlebar_icon_group" aria-hidden="true">/);
+  assert.match(game, /className="titlebar_icon_copy">⏱️<\/span><span className="titlebar_icon_copy">🪙<\/span><span className="titlebar_icon_copy">🔑<\/span>/);
+  assert.match(game, /<span className="titlebar_icon_copy">⌕<\/span><span className="titlebar_icon_copy">▣<\/span><span className="titlebar_icon_copy">⛶<\/span><span className="titlebar_icon_copy">⚙<\/span>/);
+  assert.match(game, /aria-label="Time"/);
+  assert.match(game, /aria-label="Gold"/);
+  assert.match(game, /aria-label="Keys"/);
+  assert.match(game, /className="titlebar_counter_value"/);
+  assert.match(game, /<Tooltip content="Zoom to change the game view\."/);
+  assert.match(game, /const cameraHelp = \{ center:.*deadzone:.*screen:/);
+  assert.match(game, /content=\{cameraHelp\[preferences\.camera\]/);
+  assert.match(game, /titlebar_select_utility/);
+  assert.match(game, /<Tooltip content="Enter or leave fullscreen\."/);
+  assert.match(game, /<Tooltip content="Adjust sound and return to menu\."/);
+  assert.match(css, /\.titlebar \.titlebar_select_utility \{ width:6\.6em; flex:0 0 6\.6em/);
 });
 
 test("renders and measures the in-world tooltip after its React node mounts", async () => {
@@ -78,6 +100,6 @@ test("renders and measures the in-world tooltip after its React node mounts", as
   assert.match(world, /<section ref=\{tooltipRef\} className="enemy_world_tooltip"/);
   assert.match(world, /if \(!host \|\| !panel\) return;/);
   assert.match(world, /if \(tooltipRef\.current\) observer\.observe\(tooltipRef\.current\)/);
-  assert.match(world, /<h2>PORTRAIT<\/h2>/);
+  assert.match(world, /<h2>Portrait: \{hoveredEnemy\.name\}<\/h2>/);
   assert.match(world, /<h2>RESOURCES<\/h2>/);
 });

@@ -27,7 +27,7 @@ export const itemCatalog = Object.freeze([
   { name: "Chest Plate 02", group: "armor", modifiers: { defense: 4 } },
   { name: "Iron Sword 01", group: "weapons", modifiers: { offense: 8 } },
   { name: "Oak Shield 03", group: "weapons", modifiers: { defense: 3 } },
-  { name: "Wooden Stick", group: "weapons", modifiers: { offense: 6 } },
+  { name: "Wooden Stick", group: "weapons", modifiers: { offense: 8 } },
 ]);
 
 function rng(seed) { let value = seed >>> 0; return () => { value = (value * 1664525 + 1013904223) >>> 0; return value / 4294967296; }; }
@@ -109,6 +109,7 @@ export function upgradeCampaignResources(campaign) {
   campaign.player.resources = playerResourcesFromCampaign(campaign);
   const level = campaign.floor.level ?? campaign.floor.depth ?? 1;
   for (const entity of campaign.floor.entities ?? []) if (entity.kind === "enemy") {
+    if (entity.name === "Cave Rat") entity.name = "Rat";
     entity.resources = enemyResources(entity, level);
     entity.hp = entity.resources.health.current;
     entity.maxHp = entity.resources.health.currentMax;
@@ -136,7 +137,6 @@ export function generateFloor(level, seed = seedNow(), difficulty = level) {
   }
   const start = { ...FLOOR_CENTER }; const exit = roomCenter(rooms.at(-1));
   const entities = [
-    { id: "stick", kind: "item", x: start.x + 1, y: start.y, item: itemInstance(itemCatalog[3], "stick-item") },
     { id: "health-potion", kind: "potion", resource: "health", x: start.x, y: start.y + 1 },
     { id: "mana-potion", kind: "potion", resource: "mana", x: start.x + 2, y: start.y },
     { id: "stairs", kind: "stairs", x: exit.x, y: exit.y },
@@ -144,8 +144,10 @@ export function generateFloor(level, seed = seedNow(), difficulty = level) {
   for (let i = 1; i < rooms.length; i++) {
     const room = rooms[i]; const x = room.x + 2; const y = room.y + 2;
     if (random() < 0.76) {
-      const health = 12 + (difficulty - 1) * 3;
-      const enemy = { id: `enemy-${i}`, kind: "enemy", x, y, hp: health, maxHp: health, damage: 11 + (difficulty - 1) * 2, awareness: GAME_TUNING.enemyAwareness, actionCooldown: GAME_TUNING.enemyActionCooldown, nextActionAt: GAME_TUNING.enemyActionCooldown, name: difficulty > 4 && random() < 0.4 ? "Skeleton" : "Cave Rat", xp: GAME_TUNING.xpPerKillBase + difficulty };
+      const skeleton = difficulty > 1 && random() < 0.4;
+      const health = skeleton ? 20 + (difficulty - 2) * 4 : 12 + (difficulty - 1) * 3;
+      const damage = skeleton ? 6 + (difficulty - 2) * 2 : 3 + (difficulty - 1) * 2;
+      const enemy = { id: `enemy-${i}`, kind: "enemy", x, y, hp: health, maxHp: health, damage, awareness: GAME_TUNING.enemyAwareness, actionCooldown: GAME_TUNING.enemyActionCooldown, nextActionAt: GAME_TUNING.enemyActionCooldown, name: skeleton ? "Skeleton" : "Rat", xp: GAME_TUNING.xpPerKillBase + difficulty };
       enemy.resources = enemyResources(enemy, level);
       entities.push(enemy);
     }
@@ -176,7 +178,7 @@ export function resourceState(campaign) {
 
 export function createCampaign(seed = seedNow(), difficulty = 1) {
   const floor = generateFloor(1, seed, difficulty); const attributes = { health: GAME_TUNING.startingHealth, stamina: GAME_TUNING.startingStamina, offense: 0, defense: GAME_TUNING.innateDefense, mana: GAME_TUNING.startingMana, vitality: 0, strength: 0, luck: 0, recovery: 0, stealth: 0 };
-  const campaign = { version: 3, world: "One", realm: `Underground ${floor.level}`, floor, progression: { attributes, level: 1, xp: 0, nextXp: GAME_TUNING.xpThreshold, totalKills: 0, difficulty, pendingUpgrades: [] }, player: { x: floor.start.x, y: floor.start.y, resources: {}, equipment: { weapons: [null, null], armor: [null, null] }, inventory: [], inventoryCapacity: ITEM_CAPACITY, abilities: ["heal", "wand", null, null], sneaking: false }, counters: { keys: 1, gold: 55 }, objective: "Find the exit", log: [] };
+  const campaign = { version: 3, world: "One", realm: `Underground ${floor.level}`, floor, progression: { attributes, level: 1, xp: 0, nextXp: GAME_TUNING.xpThreshold, totalKills: 0, difficulty, pendingUpgrades: [] }, player: { x: floor.start.x, y: floor.start.y, resources: {}, equipment: { weapons: [itemInstance(itemCatalog[3], "starter-stick"), null], armor: [null, null] }, inventory: [], inventoryCapacity: ITEM_CAPACITY, abilities: ["heal", "wand", null, null], sneaking: false }, counters: { keys: 1, gold: 55 }, objective: "Find the exit", log: [] };
   campaign.player.resources = playerResourcesFromCampaign(campaign, { health: GAME_TUNING.startingHealth, stamina: GAME_TUNING.startingStamina, mana: GAME_TUNING.startingMana });
   return campaign;
 }

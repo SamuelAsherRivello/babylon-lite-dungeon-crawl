@@ -43,8 +43,15 @@ test('uses a command desk and removes template corner units', async () => {
   const [game, app, css] = await Promise.all(['src/game/Game.jsx', 'src/ui/App.jsx', 'src/ui/style.css'].map((path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8')));
   assert.match(game, /PrimaryInfoPanel/); assert.match(game, /SecondaryInfoPanel/); assert.match(game, /3 Saved Games/); assert.match(game, /Dev Settings/);
   assert.match(game, /className="titlebar_left"/); assert.match(game, /className="titlebar_right"/); assert.match(game, /className="titlebar_identity"/); assert.match(game, /className="titlebar_progress"/); assert.match(game, /World: 1/);
-  assert.match(game, /className="titlebar_identity">Dungeon Roguelite \(DR\)<\/span>/);
+  assert.match(game, /aria-label="Time">⏱️<\/span>/); assert.match(game, /aria-label="Gold">🪙<\/span><span className="titlebar_counter_value">\{campaign\.counters\.gold\}/); assert.match(game, /aria-label="Keys">🔑<\/span><span className="titlebar_counter_value">\{String\(campaign\.counters\.keys\)/);
+  assert.doesNotMatch(game, /titlebar_icon_group/); assert.doesNotMatch(css, /titlebar_icon_group/);
+  assert.match(game, /className="titlebar_identity">Dungeon Roguelite<\/span>/);
+  assert.doesNotMatch(game, /className="titlebar_identity">Dungeon Roguelite \(DR\)<\/span>/);
   assert.match(game, /className="titlebar_utility"/); assert.match(css, /\.titlebar_utility \{[^}]*align-items:center[^}]*padding:0 \.35em/);
+  assert.match(game, /Clear Local Storage/); assert.match(game, /clearCryptboundStorage\(localStorage\)/); assert.match(game, /window\.location\.reload\(\)/);
+  assert.match(css, /\.titlebar \.titlebar_select_utility \{ width:9\.5em; flex:0 0 9\.5em/); assert.match(css, /\.titlebar \.titlebar_select_utility select \{ width:7\.4em/);
+  assert.match(game, /const selectPreference = \(event, preference\) => \{ setPreference\(preference\); event\.currentTarget\.blur\(\); \}/);
+  assert.match(game, /<span>Move:<\/span>\{\["W", "A", "S", "D"\]/); assert.match(game, /<kbd key=\{key\}>\{key\}<\/kbd>/); assert.match(css, /\.status_shortcut kbd \{[^}]*border:1px solid/);
   assert.match(game, /<option value="deadzone">Deadzone<\/option>/);
   assert.doesNotMatch(app, /AppCorner/); assert.match(css, /mobile_controls/);
   assert.match(css, /grid-template-rows:4% 92% 4%/); assert.match(css, /grid-template-rows:4% 46% 4% 46%/);
@@ -94,14 +101,25 @@ test('centers an empty equipment slot marker', async () => {
   assert.match(game, /type === "ability" \? "" : "\+"/);
   assert.match(css, /\.slot_item \.empty_slot\{display:grid;flex:1;place-items:center/);
 });
+test('matches inventory row spacing to the abilities list', async () => {
+  const css = await readFile(new URL('../src/ui/style.css', import.meta.url), 'utf8');
+  assert.match(css, /\.view_list,\.slot_group \{ display:grid; gap:\.18rem; \}/);
+  assert.match(css, /\.inventory_scroll \{ display:grid; align-content:start; gap:\.18rem; \}/);
+});
+test('uses the shared card inset for log, equipment, and inventory scrollbars', async () => {
+  const css = await readFile(new URL('../src/ui/style.css', import.meta.url), 'utf8');
+  assert.match(css, /\.log_scroll,\.slot_scroll,\.inventory_scroll \{ height:100%; min-height:0; overflow-y:scroll/);
+  assert.doesNotMatch(css, /\.log_scroll,\.slot_scroll,\.inventory_scroll \{[^}]*margin-inline/);
+  assert.match(css, /\.log_scroll::-webkit-scrollbar,\.slot_scroll::-webkit-scrollbar,\.inventory_scroll::-webkit-scrollbar/);
+});
 test('renders transient item drag feedback without intercepting drops', async () => {
   const [game, css] = await Promise.all(['src/game/Game.jsx', 'src/ui/style.css'].map((path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8')));
   assert.match(game, /describeInventoryDrop/); assert.match(game, /setDragPresentation\(\{ source: current\.source/);
-  assert.match(game, /function ItemDragPreview/); assert.match(game, /drag_departure/); assert.match(game, /drag_landing/);
+  assert.match(game, /function ItemDragPreview/); assert.match(game, /<SlotItem type=\{drag\.source\.kind === "slot" \? "equipment" : "inventory"\}/); assert.match(game, /<SlotItem type="ability" number=\{drag\.source\.index\}/); assert.match(game, /drag_departure/); assert.match(game, /drag_landing/);
   assert.match(game, /Math\.hypot\(event\.clientX - current\.startX, event\.clientY - current\.startY\) < 6/);
   assert.match(game, /cancelPointerDrag = useCallback\(\(\) => \{ pointerDragRef\.current = null; setPreview\(null\); setDragPresentation\(null\); \}/);
   assert.match(game, /window\.addEventListener\("pointercancel", pointerCancel\)/);
-  assert.match(css, /\.item_drag_preview\{[^}]*pointer-events:none/); assert.match(css, /\.drag_departure/); assert.match(css, /\.drag_landing/);
+  assert.match(css, /\.item_drag_preview\{[^}]*pointer-events:none/); assert.match(css, /\.item_drag_preview\{[^}]*width:min\(11rem/); assert.match(css, /\.drag_departure/); assert.match(css, /\.drag_landing/);
 });
 
 test('renders the Stealth stat and level-up chooser from game-rule state', async () => {
@@ -110,4 +128,16 @@ test('renders the Stealth stat and level-up chooser from game-rule state', async
   assert.match(game, /export function LevelUpChooser/);
   assert.match(game, /choose-upgrade/);
   assert.match(game, /Level \{pending\.level\}: Choose a Stat/);
+});
+
+test('uses delta values to pulse only when an attribute turns red or green', async () => {
+  const [game, css] = await Promise.all(['src/game/Game.jsx', 'src/ui/style.css'].map((path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8')));
+  assert.match(game, /export function DeltaValue/);
+  assert.match(game, /if \(toneChanged && tone\) setPulseVersion/);
+  assert.match(game, /<DeltaValue value=\{value\} tone=\{tone\}/);
+  assert.match(css, /\.delta_value_number \{ color:#e8dec4; \}/);
+  assert.match(css, /\.delta_value_green \{ color:#76c878; \}/);
+  assert.match(css, /\.delta_value_red \{ color:#df6161; \}/);
+  assert.match(css, /\.delta_value_pulse \{ animation:delta_value_pulse 300ms ease-out; \}/);
+  assert.match(css, /@keyframes delta_value_pulse \{ 0%,100% \{ transform:scale\(1\); \} 50% \{ transform:scale\(2\); \} \}/);
 });
