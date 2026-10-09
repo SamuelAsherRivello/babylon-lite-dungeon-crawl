@@ -65,6 +65,10 @@ body {
 .saved_games h1,.saved_games h2 { margin:0; color:#e4b85e; text-align:center; }
 .saved_games button { display:grid; gap:.25rem; min-width:17rem; text-align:left; border:1px solid #65583e; background:#211d24; color:#e8dec4; padding:.75rem; font:inherit; }
 .command_desk { display:grid; grid-template-rows:4% 92% 4%; overflow:hidden; }
+.map_fix_controls { position:absolute; z-index:20; top:4.2%; left:1%; display:flex; align-items:center; gap:.35rem; padding:.25rem .4rem; border:1px solid #8f6f38; background:#17151be8; color:#e8dec4; font-size:.62rem; }
+.map_fix_controls button,.map_fix_controls label { border:1px solid #8f6f38; background:#211d24; color:#e8dec4; padding:.2rem .35rem; font:inherit; cursor:pointer; }
+.map_fix_controls input { width:0; height:0; opacity:0; position:absolute; }
+.map_fix_controls [role="alert"] { color:#df6161; max-width:28rem; }
 .titlebar,.statusbar { display:flex; align-items:center; justify-content:center; gap:.55rem; min-width:0; padding:0 .55rem; box-sizing:border-box; border-color:#65583e; font-size:clamp(.6rem,1.2cqw,.95rem); }
 .titlebar { border-bottom:1px solid #65583e; }
 .statusbar { border-top:1px solid #65583e; padding-top:0; padding-bottom:0; line-height:1; }

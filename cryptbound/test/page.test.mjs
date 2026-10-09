@@ -42,7 +42,7 @@ test('removes fitted gutters while the browser surface is fullscreen', async () 
 test('uses a command desk and removes template corner units', async () => {
   const [game, app, css] = await Promise.all(['src/game/Game.jsx', 'src/ui/App.jsx', 'src/ui/style.css'].map((path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8')));
   assert.match(game, /PrimaryInfoPanel/); assert.match(game, /SecondaryInfoPanel/); assert.match(game, /3 Saved Games/); assert.match(game, /Dev Settings/);
-  assert.match(game, /className="titlebar_left"/); assert.match(game, /className="titlebar_right"/); assert.match(game, /className="titlebar_identity"/); assert.match(game, /className="titlebar_progress"/); assert.match(game, /World: 1/);
+  assert.match(game, /className="titlebar_left"/); assert.match(game, /className="titlebar_right"/); assert.match(game, /className="titlebar_identity"/); assert.match(game, /className="titlebar_progress"/); assert.match(game, /World: \{campaign\.world === "One" \? 1 : campaign\.world\}/);
   assert.match(game, /aria-label="Time">⏱️<\/span>/); assert.match(game, /aria-label="Gold">🪙<\/span><span className="titlebar_counter_value">\{campaign\.counters\.gold\}/); assert.match(game, /aria-label="Keys">🔑<\/span><span className="titlebar_counter_value">\{String\(campaign\.counters\.keys\)/);
   assert.doesNotMatch(game, /titlebar_icon_group/); assert.doesNotMatch(css, /titlebar_icon_group/);
   assert.match(game, /className="titlebar_identity">Dungeon Roguelite<\/span>/);
@@ -62,6 +62,29 @@ test('uses a command desk and removes template corner units', async () => {
 test('returns to the saved-game menu when a player death event is committed', async () => {
   const game = await readFile(new URL('../src/game/Game.jsx', import.meta.url), 'utf8');
   assert.match(game, /event\.type === "player\.died"/); assert.match(game, /returnToMainMenu\(\); return;/);
+});
+
+test('uses randomSeed to seed only a newly selected save slot', async () => {
+  const game = await readFile(new URL('../src/game/Game.jsx', import.meta.url), 'utf8');
+  assert.match(game, /parseGameUrlOptions\(window\.location\.search\)/);
+  assert.match(game, /existing \?\? createCampaign\(randomSeed \?\? undefined, urlOptions\.level, urlOptions\.level\)/);
+  assert.match(game, /New Game · Seed \$\{randomSeed\}/);
+});
+test('supports deterministic direct-slot map-fix URLs', async () => {
+  const game = await readFile(new URL('../src/game/Game.jsx', import.meta.url), 'utf8');
+  assert.match(game, /parseGameUrlOptions\(window\.location\.search\)/);
+  assert.match(game, /urlOptions\.slot/);
+  assert.match(game, /urlOptions\.mapFix/);
+  assert.match(game, /Open Editable Copy/);
+});
+test('derives sparse dungeon terrain from the verified Wang mapping', async () => {
+  const [world, wang] = await Promise.all([
+    readFile(new URL('../src/content/world/WorldRender.js', import.meta.url), 'utf8'),
+    readFile(new URL('../src/content/world/dungeon-wang.js', import.meta.url), 'utf8'),
+  ]);
+  assert.match(world, /buildDungeonWangTerrain/);
+  assert.match(wang, /DUNGEON_WANG_TILE_BY_MASK/);
+  assert.match(wang, /DUNGEON_WANG_INTERIOR_TILE = 13/);
 });
 test('exposes independent persisted SFX and Music controls in Settings', async () => {
   const game = await readFile(new URL('../src/game/Game.jsx', import.meta.url), 'utf8');

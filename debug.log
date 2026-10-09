@@ -73,3 +73,8 @@
 [1003/200148.028:ERROR:gpu\command_buffer\service\webgpu_decoder_impl.cc:1696] Failed to query ID3D11Device from ANGLE.
 [1003/200149.420:ERROR:gpu\command_buffer\service\webgpu_decoder_impl.cc:1696] Failed to query ID3D11Device from ANGLE.
 [1003/203542.174:ERROR:gpu\command_buffer\service\webgpu_decoder_impl.cc:1696] Failed to query ID3D11Device from ANGLE.
+[1003/212823.224:ERROR:gpu\command_buffer\service\webgpu_decoder_impl.cc:1696] Failed to query ID3D11Device from ANGLE.
+[1003/212823.259:ERROR:gpu\command_buffer\service\webgpu_decoder_impl.cc:1696] Failed to query ID3D11Device from ANGLE.
+[1003/212915.562:ERROR:gpu\command_buffer\service\webgpu_decoder_impl.cc:1696] Failed to query ID3D11Device from ANGLE.
+[1003/212915.771:ERROR:gpu\command_buffer\service\webgpu_decoder_impl.cc:1696] Failed to query ID3D11Device from ANGLE.
+[1003/213256.947:ERROR:gpu\command_buffer\service\webgpu_decoder_impl.cc:1696] Failed to query ID3D11Device from ANGLE.

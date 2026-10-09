@@ -100,6 +100,6 @@ test("renders and measures the in-world tooltip after its React node mounts", as
   assert.match(world, /<section ref=\{tooltipRef\} className="enemy_world_tooltip"/);
   assert.match(world, /if \(!host \|\| !panel\) return;/);
   assert.match(world, /if \(tooltipRef\.current\) observer\.observe\(tooltipRef\.current\)/);
-  assert.match(world, /<h2>Portrait: \{hoveredEnemy\.name\}<\/h2>/);
+  assert.match(world, /<h2>ENEMY: \{hoveredEnemy\.name\}<\/h2>/);
   assert.match(world, /<h2>RESOURCES<\/h2>/);
 });

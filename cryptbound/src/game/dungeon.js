@@ -153,7 +153,7 @@ export function generateFloor(level, seed = seedNow(), difficulty = level) {
     }
     if (random() < 0.35) entities.push({ id: `chest-${i}`, kind: "chest", x: Math.min(FLOOR_WIDTH - 2, x + 1), y, opened: false });
   }
-  return { seed, width: FLOOR_WIDTH, height: FLOOR_HEIGHT, map, start, entities, time: 0, level };
+  return { seed, width: FLOOR_WIDTH, height: FLOOR_HEIGHT, map, start, entities, time: 0, level, generatorVersion: "cryptbound-floor-v1" };
 }
 
 export function effectiveAttributes(campaign, equipment = campaign.player.equipment) {
@@ -176,8 +176,8 @@ export function resourceState(campaign) {
   return playerResourcesFromCampaign(campaign);
 }
 
-export function createCampaign(seed = seedNow(), difficulty = 1) {
-  const floor = generateFloor(1, seed, difficulty); const attributes = { health: GAME_TUNING.startingHealth, stamina: GAME_TUNING.startingStamina, offense: 0, defense: GAME_TUNING.innateDefense, mana: GAME_TUNING.startingMana, vitality: 0, strength: 0, luck: 0, recovery: 0, stealth: 0 };
+export function createCampaign(seed = seedNow(), difficulty = 1, level = 1) {
+  const floor = generateFloor(level, seed, difficulty); const attributes = { health: GAME_TUNING.startingHealth, stamina: GAME_TUNING.startingStamina, offense: 0, defense: GAME_TUNING.innateDefense, mana: GAME_TUNING.startingMana, vitality: 0, strength: 0, luck: 0, recovery: 0, stealth: 0 };
   const campaign = { version: 3, world: "One", realm: `Underground ${floor.level}`, floor, progression: { attributes, level: 1, xp: 0, nextXp: GAME_TUNING.xpThreshold, totalKills: 0, difficulty, pendingUpgrades: [] }, player: { x: floor.start.x, y: floor.start.y, resources: {}, equipment: { weapons: [itemInstance(itemCatalog[3], "starter-stick"), null], armor: [null, null] }, inventory: [], inventoryCapacity: ITEM_CAPACITY, abilities: ["heal", "wand", null, null], sneaking: false }, counters: { keys: 1, gold: 55 }, objective: "Find the exit", log: [] };
   campaign.player.resources = playerResourcesFromCampaign(campaign, { health: GAME_TUNING.startingHealth, stamina: GAME_TUNING.startingStamina, mana: GAME_TUNING.startingMana });
   return campaign;
@@ -220,7 +220,7 @@ function enemyPhase(state, events) {
   }
   if (state.player.resources.health.current <= 0) { const reset = freshRunAfterDeath(state); Object.assign(state, reset); emit(events, "player.died", { realm: "Underground 1" }, state); }
 }
-function freshRunAfterDeath(state) { const difficulty = state.progression.difficulty ?? state.floor.level ?? state.floor.depth ?? 1; const campaign = createCampaign(seedNow(), difficulty); campaign.progression = structuredClone(state.progression); campaign.progression.difficulty = difficulty; campaign.player.abilities = [...state.player.abilities]; campaign.player.resources = playerResourcesFromCampaign(campaign, campaign.player.resources); return campaign; }
+function freshRunAfterDeath(state) { const difficulty = state.progression.difficulty ?? state.floor.level ?? state.floor.depth ?? 1; const campaign = createCampaign(seedNow(), difficulty, 1); campaign.progression = structuredClone(state.progression); campaign.progression.difficulty = difficulty; campaign.player.abilities = [...state.player.abilities]; campaign.player.resources = playerResourcesFromCampaign(campaign, campaign.player.resources); return campaign; }
 function orderedInventory(inventory) { return [...inventory].sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id)); }
 function attack(state, events, enemy) { const offense = Math.max(1, integerDamage(resourceState(state).offense.current)); const health = enemy.resources.health; const before = health.current; health.current = Math.max(0, health.current - offense); enemy.hp = health.current; emit(events, "combat.hit", { target: enemy.name, targetId: enemy.id, targetPosition: { x: enemy.x, y: enemy.y }, damage: offense, previousHealth: before, currentHealth: health.current }, state); changeResource(state, events, "stamina", state.player.resources.stamina.current - ATTACK_STAMINA_COST, "attack"); gainXp(state, events, GAME_TUNING.xpPerAttack, "attack"); if (health.current <= 0) { state.floor.entities = state.floor.entities.filter((entry) => entry.id !== enemy.id); state.progression.totalKills++; gainXp(state, events, enemy.resources.xp.current, "kill"); emit(events, "enemy.defeated", { name: enemy.name, xp: enemy.resources.xp.current }, state); } }
 

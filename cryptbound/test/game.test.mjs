@@ -3,16 +3,64 @@ import test from 'node:test';
 import { applyAction, combatReadiness, createCampaign, createGameSession, effectiveAttributes, FLOOR_CENTER, FLOOR_HEIGHT, FLOOR_WIDTH, GAME_TUNING, generateFloor, levelUpOptions, previewEquipment, resourceState, upgradeCampaignResources } from '../src/game/dungeon.js';
 import { projectLogEvents } from '../src/game/log-policy.js';
 import { projectFloatingFeedback, removeFloatingFeedback } from '../src/game/floating-feedback.js';
-import { getLatestMovement, getMovementKey, getMoveInitialDelay, getMoveRepeatDelay, SPRINT_INITIAL_DELAY, SPRINT_REPEAT_DELAY, WALK_INITIAL_DELAY, WALK_REPEAT_DELAY } from '../src/game/keyboard-input.js';
+import { getLatestMovement, getMovementKey, getMoveInitialDelay, getMoveRepeatDelay, getMoveScheduleDelay, SPRINT_INITIAL_DELAY, SPRINT_REPEAT_DELAY, WALK_INITIAL_DELAY, WALK_REPEAT_DELAY } from '../src/game/keyboard-input.js';
 import { findCardinalPath } from '../src/game/a-star.js';
 import { getMouseMovementFromSelectedCell, getMousePathFromSelectedCell } from '../src/game/mouse-selection.js';
 import { describeInventoryDrop, previewInventoryDrop, resolveInventoryDrop } from '../src/game/inventory-drag.js';
 import { getCameraCenter, getWorldCellAtScreenPosition, getWorldCellScreenCenter, getWorldScreenPosition, WorldRender } from '../src/content/world/WorldRender.js';
 import { findWorldTooltipPosition } from '../src/content/world/tooltip-placement.js';
 import { gameZoomPresets, getTileCssSize } from '../src/content/world/zoom.js';
+import { START_WALL_TILE_LIMIT, startWallAutotileFrames } from '../src/content/world/start-wall-autotile.js';
 import { clearCryptboundStorage, migrateCampaign, readPreferences, readSlot, readSlotSummary, writePreferences, writeSlot } from '../src/game/saves.js';
+import { randomSeedFromSearch } from '../src/game/random-seed.js';
+import { parseGameUrlOptions } from '../src/game/url-options.js';
+import { DUNGEON_TILESET_SOURCE, floorFromTiledRepairMap, serializeFloorToTiled, validateTiledRepairMap } from '../src/game/tiled-map.js';
+import { DUNGEON_WANG_TILE_BY_MASK } from '../src/content/world/dungeon-wang.js';
 
 class MemoryStorage { values = new Map(); get length() { return this.values.size; } key(index) { return [...this.values.keys()][index] ?? null; } getItem(key) { return this.values.get(key) ?? null; } setItem(key, value) { this.values.set(key, String(value)); } removeItem(key) { this.values.delete(key); } }
+
+test('reads a validated randomSeed URL parameter for reproducible campaigns', () => {
+  assert.equal(randomSeedFromSearch('?randomSeed=235234'), 235234);
+  assert.equal(randomSeedFromSearch('?mute=1&randomSeed=0'), 0);
+  for (const search of ['', '?randomSeed=', '?randomSeed=-1', '?randomSeed=1.5', '?randomSeed=4294967296', '?randomSeed=abc']) assert.equal(randomSeedFromSearch(search), null);
+});
+
+test('parses deterministic world, level, slot, seed, and map-fix URL options', () => {
+  assert.deepEqual(parseGameUrlOptions('?world=2&level=3&slot=2&seed=7&mute=1&debug-fix-map-autotiled=1'), { world: 2, level: 3, slot: '2', seed: 7, mute: true, mapFix: true, map: null });
+  assert.equal(parseGameUrlOptions('?slot=4').slot, null);
+  assert.equal(parseGameUrlOptions('?seed=-1').seed, null);
+  assert.equal(parseGameUrlOptions('?randomSeed=9').seed, 9);
+});
+
+test('reconstructs deterministic floors and round-trips Tiled repair maps', () => {
+  const first = createCampaign(77, 2, 3); const second = createCampaign(77, 2, 3);
+  assert.deepEqual(first.floor.map, second.floor.map);
+  assert.deepEqual(first.floor.entities, second.floor.entities);
+  const tiled = serializeFloorToTiled({ campaign: first });
+  assert.equal(tiled.tilesets[0].source, DUNGEON_TILESET_SOURCE);
+  assert.equal(validateTiledRepairMap(tiled).valid, true);
+  const repaired = floorFromTiledRepairMap(tiled, first.floor);
+  assert.deepEqual(repaired.map, first.floor.map);
+  assert.deepEqual(repaired.start, first.floor.start);
+  const exit = repaired.entities.find((entity) => entity.kind === 'stairs');
+  assert.ok(findCardinalPath(repaired, repaired.start, { x: exit.x, y: exit.y }));
+});
+
+test('rejects malformed Tiled repair maps without producing a floor', () => {
+  const result = validateTiledRepairMap({ type: 'map', width: 2, height: 2 });
+  assert.equal(result.valid, false);
+  assert.throws(() => floorFromTiledRepairMap({ type: 'map', width: 2, height: 2 }));
+});
+
+test('autotiles the fifty nearest start-room walls from the supplied 3-by-3 wall motif', () => {
+  const campaign = createCampaign(1);
+  const frames = startWallAutotileFrames({ map: campaign.floor.map, start: campaign.floor.start });
+  assert.equal(frames.size, START_WALL_TILE_LIMIT);
+  assert.equal(frames.get('50,46'), 7, 'top start-room wall uses the demonstrated top edge');
+  assert.equal(frames.get('46,50'), 18, 'left start-room wall uses the demonstrated left edge');
+  assert.equal(frames.get('46,46'), 6, 'diagonal start-room wall uses the demonstrated top-left corner');
+  assert.ok([...frames.values()].every((frame) => frame !== 19), 'the opaque middle wall is never used as a transparent-edge fallback');
+});
 
 test('projects player Health changes and enemy hits into positioned transient text', () => {
   const effects = projectFloatingFeedback([
@@ -247,6 +295,17 @@ test('world tooltip placement stays inside its frame and avoids both grid spots'
   assert.ok(panel.left >= frame.left && panel.top >= frame.top && panel.left + panel.width <= frame.right && panel.top + panel.height <= frame.bottom);
   for (const rect of protectedRects) assert.ok(panel.left + panel.width <= rect.left || panel.left >= rect.left + rect.width || panel.top + panel.height <= rect.top || panel.top >= rect.top + rect.height);
   assert.equal(findWorldTooltipPosition({ left: 0, top: 0, right: 80, bottom: 60 }, { width: 100, height: 70 }, protectedRects), null);
+});
+
+test('world tooltip placement honors a full extra grid-cell clearance', () => {
+  const frame = { left: 0, top: 0, right: 600, bottom: 400 };
+  const protectedRect = { left: 280, top: 180, width: 40, height: 40 };
+  const position = findWorldTooltipPosition(frame, { width: 160, height: 80 }, [protectedRect], 48);
+  assert.ok(position);
+  const panel = { left: position.left, top: position.top, width: 160, height: 80 };
+  const horizontalGap = panel.left >= protectedRect.left + protectedRect.width ? panel.left - (protectedRect.left + protectedRect.width) : panel.left + panel.width <= protectedRect.left ? protectedRect.left - (panel.left + panel.width) : 0;
+  const verticalGap = panel.top >= protectedRect.top + protectedRect.height ? panel.top - (protectedRect.top + protectedRect.height) : panel.top + panel.height <= protectedRect.top ? protectedRect.top - (panel.top + panel.height) : 0;
+  assert.ok(horizontalGap >= 48 || verticalGap >= 48);
 });
 
 test('compact world tooltip fits beside protected cells in a narrow game frame', () => {
@@ -514,6 +573,12 @@ test('WorldRender shares exact terrain and entity coordinates while camera polic
   assert.deepEqual(getCameraCenter({ mode: 'screen', player: { x: 99, y: 99 }, visibleWidth: 20, visibleHeight: 10, mapWidth: 100, mapHeight: 100 }), { x: 89.5, y: 94.5 });
   assert.deepEqual(getCameraCenter({ mode: 'center', player: { x: 1, y: 1 }, visibleWidth: 120, visibleHeight: 120, mapWidth: 100, mapHeight: 100 }), { x: 1, y: 1 });
   assert.deepEqual({ x: campaign.player.x, y: campaign.player.y }, game.markers.player); // Camera framing never mutates map coordinates.
+  assert.ok(game.terrain.length < campaign.floor.map.length * campaign.floor.map[0].length, 'deep blocked interiors are omitted from sparse terrain');
+  assert.ok(game.terrain.every((tile) => campaign.floor.map[tile.y][tile.x] === 0), 'terrain entries are walkable cells only');
+  assert.ok(game.terrain.every((tile) => tile.frame === null || tile.frame === 13 || Object.values(DUNGEON_WANG_TILE_BY_MASK).includes(tile.frame)), 'terrain uses only verified Wang IDs or explicit omissions');
+  assert.equal(game.terrain.filter((tile) => tile.frame === null).length, game.diagnostics.length, 'each omitted boundary has one diagnostic');
+  assert.ok(game.diagnostics.every((cell) => campaign.floor.map[cell.y][cell.x] === 0 && cell.mask !== 255), 'diagnostics identify unsupported walkable boundary cells');
+  assert.deepEqual(game.diagnostics.map(({ x, y, mask }) => [x, y, mask]), minimap.diagnostics.map(({ x, y, mask }) => [x, y, mask]));
 });
 test('floating text anchors to the target cell top edge across camera movement and zoom', () => {
   const player = { x: 10, y: 10 }; const target = { x: 11, y: 9 };
@@ -582,6 +647,9 @@ test('WASD and arrow input track held directions independently and delay held-ke
   assert.equal(getMoveInitialDelay(true), SPRINT_INITIAL_DELAY);
   assert.equal(getMoveRepeatDelay(false), WALK_REPEAT_DELAY);
   assert.equal(getMoveRepeatDelay(true), SPRINT_REPEAT_DELAY);
+  assert.equal(getMoveScheduleDelay(false), WALK_INITIAL_DELAY);
+  assert.equal(getMoveScheduleDelay(true), SPRINT_INITIAL_DELAY);
+  assert.equal(getMoveScheduleDelay(true, true), SPRINT_REPEAT_DELAY);
 });
 
 test('enemies advance toward the player every second game frame while attacking when adjacent', () => {

@@ -26,6 +26,13 @@ Use assets formatted for Tiled. I'll provide folders to copy from and use for th
 2. Run `npm run dev` and open the localhost URL Vite prints, or run `npm run dev:open` to launch a silent browser session for testing (`?mute=1`).
 3. Run `npm run build` to create the production site in `cryptbound/dist/`.
 
+## URL Arguments
+
+- `?randomSeed=235234` starts a deterministic new campaign with that unsigned 32-bit seed when an empty save slot is selected. Existing saves resume unchanged.
+- `?mute=1` mutes all audio, including when combined as `?randomSeed=235234&mute=1`.
+
+The 50 unwalkable tiles closest to a new run's start room use the wall edge, corner, and solid wall-face frames demonstrated by `Tiled_Examples/wall_combinations01.tmx`. The rest of the procedural map retains the general wall treatment.
+
 ## Controls
 
 - Move one tile with WASD or the arrow keys. Pair directions for diagonal movement.

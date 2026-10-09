@@ -1,15 +1,23 @@
-import { wallFrameAt } from "../../game/dungeon.js";
+import { buildDungeonWangTerrain } from "./dungeon-wang.js";
+
+const wangTerrainCache = new WeakMap();
+
+function getWangTerrain(map, tileSize) {
+  let result = wangTerrainCache.get(map);
+  if (!result || result.tileSize !== tileSize) {
+    result = { tileSize, ...buildDungeonWangTerrain({ map, tileSize }) };
+    wangTerrainCache.set(map, result);
+  }
+  return result;
+}
 
 /** Build renderer-neutral geometry/placement for either world view. */
 export const WorldRender = Object.freeze({
-  Render({ map, entities = [], player, tileSize = 32, view = "game", detail = "full" }) {
-    const terrain = [];
-    for (let y = 0; y < map.length; y++) for (let x = 0; x < map[y].length; x++) {
-      terrain.push({ x, y, worldX: x * tileSize + tileSize / 2, worldY: y * tileSize + tileSize / 2, wall: map[y][x] === 1, frame: map[y][x] === 1 ? wallFrameAt({ map }, x, y) : 26 });
-    }
+  Render({ map, entities = [], player, start = player, tileSize = 32, view = "game", detail = "full" }) {
+    const { terrain, diagnostics } = getWangTerrain(map, tileSize);
     const actors = entities.filter((entry) => entry.kind === "enemy").map((entry) => ({ id: entry.id, kind: entry.name === "Skeleton" ? "skeleton" : "rat", x: entry.x, y: entry.y, worldX: entry.x * tileSize + tileSize / 2, worldY: entry.y * tileSize + tileSize / 2 }));
     const objects = entities.filter((entry) => ["item", "potion", "chest", "stairs", "discovery"].includes(entry.kind)).map((entry) => ({ id: entry.id, kind: entry.kind, resource: entry.resource ?? null, x: entry.x, y: entry.y, worldX: entry.x * tileSize + tileSize / 2, worldY: entry.y * tileSize + tileSize / 2 }));
-    return { view, detail, tileSize, width: map[0]?.length ?? 0, height: map.length, terrain, actors, objects, markers: { player: { x: player.x, y: player.y }, exit: objects.find((entry) => entry.kind === "stairs") ?? null } };
+    return { view, detail, tileSize, width: map[0]?.length ?? 0, height: map.length, terrain, diagnostics, actors, objects, markers: { player: { x: player.x, y: player.y }, exit: objects.find((entry) => entry.kind === "stairs") ?? null } };
   },
 });
 

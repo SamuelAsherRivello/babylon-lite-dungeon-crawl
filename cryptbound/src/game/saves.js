@@ -73,7 +73,8 @@ export function migrateCampaign(value) {
   }
   if (!validV1(value)) throw new Error("This save is invalid or from an unsupported version.");
   const level = Number.isInteger(value.floor.level) ? value.floor.level : Number.isInteger(value.floor.depth) ? value.floor.depth : 1;
-  const next = createCampaign(value.floor.seed, level);
+  const difficulty = Number.isInteger(value.progression.difficulty) ? value.progression.difficulty : level;
+  const next = createCampaign(value.floor.seed, difficulty, level);
   next.floor = structuredClone(value.floor);
   next.floor.level = level;
   next.floor.time = Number.isFinite(value.floor.time) ? value.floor.time : Number.isFinite(value.time) ? value.time : 0;

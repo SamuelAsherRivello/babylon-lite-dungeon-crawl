@@ -4,8 +4,11 @@ import { describeInventoryDrop } from "./inventory-drag.js";
 import { gameZoomPresets } from "../content/world/zoom.js";
 import { projectLogEvents } from "./log-policy.js";
 import { createAudioManager } from "./audio.js";
+import { parseGameUrlOptions } from "./url-options.js";
+import { floorFromTiledRepairMap, serializeFloorToTiled } from "./tiled-map.js";
+import { createStoredZip } from "./zip.js";
 import { projectFloatingFeedback, removeFloatingFeedback } from "./floating-feedback.js";
-import { getLatestMovement, getMovementKey, getMoveInitialDelay, getMoveRepeatDelay } from "./keyboard-input.js";
+import { getLatestMovement, getMovementKey, getMoveRepeatDelay, getMoveScheduleDelay } from "./keyboard-input.js";
 import { getMouseMovementFromSelectedCell, getMousePathFromSelectedCell } from "./mouse-selection.js";
 import { clearCryptboundStorage, readPreferences, readSlot, readSlotSummary, writePreferences, writeSlot } from "./saves.js";
 import { BabylonWorld } from "../content/BabylonWorld.jsx";
@@ -47,6 +50,32 @@ function EquipmentItem({ item, group, index, drag }) { const departure = drag?.s
 export function SlotList({ campaign, drag = null }) { return <div className="slot_scroll">{[["Weapons", "weapons"], ["Armor", "armor"]].map(([label, group]) => <div className="slot_group" key={group}><h3>{label}</h3>{campaign.player.equipment[group].map((item, index) => <EquipmentItem key={index} item={item} group={group} index={index} drag={drag} />)}</div>)}</div>; }
 export function InventoryViewItems({ campaign, dispatch, drag = null }) { const landing = drag?.destination?.kind === "inventory"; return <div className={"inventory_scroll" + (landing ? " drag_landing" : "")} data-drop-inventory>{campaign.player.inventory.map((item) => { const departure = drag?.source.kind === "inventory" && drag.source.item.id === item.id; const presentation = itemPresentation(item); return <SlotItem key={item.id} type="inventory" text={item.name} icon={presentation.icon} cost={presentation.cost} className={["inventory_item", departure && "drag_departure"].filter(Boolean).join(" ")} onDoubleClick={() => dispatch({ type: "equip", itemId: item.id, group: item.group, index: 0 })} dragSource={{ "data-drag-kind": "inventory", "data-drag-id": item.id, "aria-label": `Drag ${item.name}` }} tooltip={inventoryItemHelp(item)} />; })}</div>; }
 function SecondaryInfoPanel({ campaign }) { return <aside className="info_panel secondary"><Card title="Minimap"><div className="minimap"><BabylonWorld campaign={campaign} zoom={0.18} minimap /></div></Card><Card title="Quest"><p className="quest_text">{campaign.objective}</p></Card><Card title="Log" className="log_card"><div className="log_scroll">{campaign.log.map((entry) => <p key={entry.id}>{entry.text}</p>)}</div></Card></aside>; }
+function MapFixControls({ campaign, slot, onImport, error }) {
+  const exportMap = async () => {
+    const name = `cryptbound-world-${campaign.world}-level-${campaign.floor.level}-seed-${campaign.floor.seed}.tmj`;
+    const content = JSON.stringify(serializeFloorToTiled({ campaign }), null, 2);
+    try {
+      const base = import.meta.env.BASE_URL;
+      const assetUrl = (path) => new URL(`${base}assets/${path}`, window.location.origin).href;
+      const [tileset, image] = await Promise.all([
+        fetch(assetUrl("Tiled_Examples/Tilesets/Tileset_Dungeon.tsx")).then((response) => response.ok ? response.text() : Promise.reject(new Error("Dungeon tileset could not be loaded."))),
+        fetch(assetUrl("Tilesets/Tileset_Dungeon.png")).then((response) => response.ok ? response.arrayBuffer() : Promise.reject(new Error("Dungeon tileset image could not be loaded."))).then((bytes) => new Uint8Array(bytes)),
+      ]);
+      const bundle = createStoredZip([
+        [`debug/fixtures/${name}`, content],
+        ["assets/Tiled_Examples/Tilesets/Tileset_Dungeon.tsx", tileset],
+        ["assets/Tilesets/Tileset_Dungeon.png", image],
+      ]);
+      const url = URL.createObjectURL(bundle); const link = document.createElement("a");
+      link.href = url; link.download = name.replace(/\.tmj$/i, ".zip"); link.click(); URL.revokeObjectURL(url);
+    } catch (error) {
+      if (error?.name === "AbortError") return;
+      const alertMessage = error instanceof Error ? error.message : "Could not create the editable map bundle.";
+      window.alert(alertMessage);
+    }
+  };
+  return <section className="map_fix_controls" aria-label="Map repair tools"><strong>Map Fix</strong><button type="button" onClick={exportMap}>Open Editable Copy</button><label>Load repaired map<input type="file" accept=".tmj,.json,application/json" onChange={(event) => onImport(event.target.files?.[0])} /></label>{slot && <span>Slot {slot}</span>}{error && <span role="alert">{error}</span>}</section>;
+}
 function PrimaryInfoPanel({ campaign, dispatch, preview, gains, drag }) { return <aside className="info_panel primary"><Card title="Resources"><ResourceList campaign={campaign} gains={gains} /></Card><Card title="Attributes"><AttributeViewItemList campaign={campaign} preview={preview} /></Card><Card title="Abilities"><AbilityViewItemList campaign={campaign} dispatch={dispatch} /></Card><Card title="Equipment"><SlotList campaign={campaign} drag={drag} /></Card><Card title={"Inventory " + String(campaign.player.inventory.length).padStart(2, "0") + "/" + String(campaign.player.inventoryCapacity).padStart(2, "0")}><InventoryViewItems campaign={campaign} dispatch={dispatch} drag={drag} /></Card></aside>; }
 function MobileControlPanel({ campaign, dispatch, hidden = false }) { return <section className="mobile_controls" hidden={hidden}><div className="arrow_controls">{[["n", "↑"], ["w", "←"], ["s", "↓"], ["e", "→"]].map(([direction, label]) => <button key={direction} onClick={() => dispatch({ type: "move", direction })}>{label}</button>)}</div><div className="mobile_abilities">{[0, 1, 2, 3].map((index) => <button key={index} disabled={!campaign.player.abilities[index] || campaign.player.resources.mana.current < abilityCatalog[campaign.player.abilities[index]]?.manaCost} onClick={() => dispatch({ type: "ability", index })}>{index + 1}</button>)}</div><button className="sneak_button" onClick={() => dispatch({ type: "toggle-sneak" })}>Sneak {campaign.player.sneaking ? "On" : ""}</button></section>; }
 function SettingsDialog({ onClose, onReturn, onClearLocalStorage, preferences, setPreference, mutedByUrl }) { return <Dialog title="Settings" onClose={onClose}><div className="settings_actions"><div className="audio_settings"><label className="audio_slider"><span>SFX Volume <output>{preferences.sfxVolume}%</output></span><input type="range" min="0" max="100" step="1" value={preferences.sfxVolume} aria-label="SFX volume" aria-valuetext={`${preferences.sfxVolume}%`} onChange={(event) => setPreference({ sfxVolume: Number(event.target.value) })} /></label><label className="audio_slider"><span>Music Volume <output>{preferences.musicVolume}%</output></span><input type="range" min="0" max="100" step="1" value={preferences.musicVolume} aria-label="Music volume" aria-valuetext={`${preferences.musicVolume}%`} onChange={(event) => setPreference({ musicVolume: Number(event.target.value) })} /></label><label className="audio_mute"><input type="checkbox" checked={preferences.muteAll} onChange={(event) => setPreference({ muteAll: event.target.checked })} /> Mute All</label>{mutedByUrl && <span className="audio_mute_notice" role="status">Muted for this page by ?mute=1</span>}</div><button onClick={onReturn}>Save &amp; Return to Main Menu</button><button onClick={onClearLocalStorage}>Clear Local Storage</button><a href="https://github.com/SamuelAsherRivello/babylon-lite-dungeon-crawl" target="_blank" rel="noopener noreferrer">GitHub</a><span>v{versionText.trim().replace(/^version=/, "")}</span></div></Dialog>; }
@@ -57,7 +86,7 @@ export function TitleBar({ campaign, preferences, setPreference, onFullscreen, o
     <div className="titlebar_left">
       <span className="titlebar_identity">Dungeon Roguelite</span>
       <span className="titlebar_progress">
-        <Tooltip content="Current world."><span>World: 1</span></Tooltip>
+        <Tooltip content="Current world."><span>World: {campaign.world === "One" ? 1 : campaign.world}</span></Tooltip>
         <Tooltip content="Current dungeon level."><span>Level: {campaign.floor.level ?? campaign.floor.depth ?? 1}</span></Tooltip>
       </span>
       <span className="counters">
@@ -88,6 +117,8 @@ export function Game() {
   const floatingTimers = useRef(new Map());
   useEffect(() => () => { floatingTimers.current.forEach(clearTimeout); floatingTimers.current.clear(); }, []);
   const [preferences, setPreferences] = useState(() => { try { return readPreferences(localStorage); } catch { return { zoom: 1, camera: "center", fullscreenDesired: false, sfxVolume: 80, musicVolume: 20, muteAll: false }; } });
+  const [urlOptions] = useState(() => parseGameUrlOptions(window.location.search));
+  const randomSeed = urlOptions.seed;
   const [audio] = useState(() => createAudioManager({ search: window.location.search }));
   useEffect(() => { audio.setPreferences(preferences); }, [audio, preferences]);
   useEffect(() => { const startMusic = () => audio.startMusic(); window.addEventListener("pointerdown", startMusic); window.addEventListener("keydown", startMusic); return () => { window.removeEventListener("pointerdown", startMusic); window.removeEventListener("keydown", startMusic); }; }, [audio]);
@@ -112,7 +143,7 @@ export function Game() {
     floatingTimers.current.forEach(clearTimeout); floatingTimers.current.clear(); setFloatingFeedback([]);
     setSelectedGridSpot(null); setPreview(null); setDragPresentation(null); setSettings(false); setCampaign(null); setSlot(null);
   }, []);
-  const syncMovement = useCallback((immediate = true) => {
+  const syncMovement = useCallback((immediate = true, continuing = false) => {
     const keyboard = getLatestMovement(heldMovements.current, heldShift.current.size > 0);
     const next = keyboard ?? mouseMovement.current;
     const previous = activeMovement.current;
@@ -121,13 +152,13 @@ export function Game() {
     activeMovement.current = next ? { ...next, source } : null;
     if (moveTimer.current) { clearTimeout(moveTimer.current); clearInterval(moveTimer.current); moveTimer.current = null; }
     if (!next) return;
-    if (immediate && previous?.direction !== next.direction) dispatch({ type: "move", direction: next.direction });
+    if (immediate && (previous?.direction !== next.direction || (!previous?.sprint && next.sprint))) dispatch({ type: "move", direction: next.direction });
     const repeat = () => dispatch({ type: "move", direction: next.direction });
     const scheduleRepeat = (delay) => { moveTimer.current = setTimeout(() => {
       repeat();
       if (activeMovement.current?.source === source && activeMovement.current.direction === next.direction && activeMovement.current.sprint === next.sprint) scheduleRepeat(getMoveRepeatDelay(next.sprint));
     }, delay); };
-    scheduleRepeat(getMoveInitialDelay(next.sprint));
+    scheduleRepeat(getMoveScheduleDelay(next.sprint, continuing));
   }, [dispatch]);
   useEffect(() => {
     mouseMovement.current = getMouseMovementFromSelectedCell(selectedGridSpot, campaign, selectedMousePath);
@@ -187,7 +218,7 @@ export function Game() {
       if (settings || campaign?.progression.pendingUpgrades?.length || editable(event.target)) return;
       const movement = getMovementKey(event);
       if (movement) { event.preventDefault(); if (!heldMovements.current.has(movement.code)) { heldMovements.current.set(movement.code, movement); syncMovement(); } return; }
-      if (event.code === "ShiftLeft" || event.code === "ShiftRight") { event.preventDefault(); const oldSprint = heldShift.current.size > 0; heldShift.current.add(event.code); if (!oldSprint) syncMovement(false); return; }
+      if (event.code === "ShiftLeft" || event.code === "ShiftRight") { event.preventDefault(); const oldSprint = heldShift.current.size > 0; heldShift.current.add(event.code); if (!oldSprint) syncMovement(true, true); return; }
       if (!event.repeat && /^Digit[1-4]$/.test(event.code || "")) { event.preventDefault(); dispatch({ type: "ability", index: Number(event.code.slice(-1)) - 1 }); }
       else if (!event.repeat && /^[1-4]$/.test(event.key)) { event.preventDefault(); dispatch({ type: "ability", index: Number(event.key) - 1 }); }
       else if (!event.repeat && (event.code === "KeyC" || event.key.toLowerCase() === "c")) { event.preventDefault(); dispatch({ type: "toggle-sneak" }); }
@@ -198,12 +229,30 @@ export function Game() {
     };
     window.addEventListener("keydown", down); window.addEventListener("keyup", up); window.addEventListener("blur", clearHeldInput);
     if (settings) clearHeldInput();
-    return () => { window.removeEventListener("keydown", down); window.removeEventListener("keyup", up); window.removeEventListener("blur", clearHeldInput); clearHeldInput(); };
+    return () => { window.removeEventListener("keydown", down); window.removeEventListener("keyup", up); window.removeEventListener("blur", clearHeldInput); };
   }, [campaign, dispatch, settings, syncMovement]);
-  const begin = (id) => { let existing = null; try { existing = readSlot(localStorage, id); } catch { setSaveError("This saved game is unavailable. Its data was left unchanged."); setSummaries(readSlotSummary(localStorage)); return; } floatingTimers.current.forEach(clearTimeout); floatingTimers.current.clear(); setFloatingFeedback([]); setSelectedGridSpot(null); if (preferences.fullscreenDesired && !document.fullscreenElement) document.documentElement.requestFullscreen?.().catch(() => {}); const initial = existing ?? createCampaign(); const session = createGameSession(initial, { onCommit: (result) => { try { writeSlot(localStorage, id, result.state); setSummaries(readSlotSummary(localStorage)); setSaveError(""); } catch (error) { setSaveError("Saving is unavailable in this browser session."); session.publish("campaign.save.failed", { message: error.message }); } } }); session.subscribe((result) => { if (!result.accepted && !result.system) return; audio.playEvents(result.events); result.state.log = projectLogEvents(result.state.log, result.events); const feedback = projectFloatingFeedback(result.events); if (feedback.length) { setFloatingFeedback((current) => [...current, ...feedback].slice(-24)); for (const effect of feedback) { const timer = setTimeout(() => { setFloatingFeedback((current) => removeFloatingFeedback(current, effect.id)); floatingTimers.current.delete(effect.id); }, effect.duration); floatingTimers.current.set(effect.id, timer); } } for (const event of result.events) { const facts = event.facts; if ((event.type === "resource.changed" && facts.current > facts.previous) || (event.type === "xp.gained" && facts.current > facts.previous)) { const name = event.type === "xp.gained" ? "xp" : facts.resource; setGains((current) => ({ ...current, [name]: { from: facts.previous, to: facts.current, max: facts.currentMax ?? initial.progression.attributes[name] ?? 100 } })); clearTimeout(gainTimers.current.get(name)); gainTimers.current.set(name, setTimeout(() => setGains((current) => { const next = { ...current }; delete next[name]; return next; }), 420)); } } if (result.events.some((event) => event.type === "player.died")) { returnToMainMenu(); return; } setCampaign(result.state); }); sessionRef.current = session; setSlot(id); setCampaign(initial); };
-  if (!campaign) return <main className="saved_games"><h1>Dungeon Roguelite (DR)</h1><h2>3 Saved Games</h2>{summaries.map((entry) => <button key={entry.slot} disabled={entry.invalid} onClick={() => begin(entry.slot)}><b>Saved Game {entry.slot}</b><span>{entry.invalid ? "Unavailable" : entry.occupied ? "Level " + String(entry.level).padStart(2, "0") + " · XP " + String(entry.xpLevel).padStart(2, "0") : "New Game"}</span></button>)}{saveError && <p role="alert">{saveError}</p>}</main>;
+  const begin = (id, repairedFloor = null) => { let existing = null; try { existing = readSlot(localStorage, id); } catch { setSaveError("This saved game is unavailable. Its data was left unchanged."); setSummaries(readSlotSummary(localStorage)); return; } floatingTimers.current.forEach(clearTimeout); floatingTimers.current.clear(); setFloatingFeedback([]); setSelectedGridSpot(null); if (preferences.fullscreenDesired && !document.fullscreenElement) document.documentElement.requestFullscreen?.().catch(() => {}); const initial = existing ?? createCampaign(randomSeed ?? undefined, urlOptions.level, urlOptions.level); if (!existing) initial.world = urlOptions.world === 1 ? "One" : String(urlOptions.world); if (repairedFloor) { initial.floor = structuredClone(repairedFloor); initial.player.x = repairedFloor.start.x; initial.player.y = repairedFloor.start.y; initial.realm = `Underground ${repairedFloor.level}`; } const session = createGameSession(initial, { onCommit: (result) => { try { writeSlot(localStorage, id, result.state); setSummaries(readSlotSummary(localStorage)); setSaveError(""); } catch (error) { setSaveError("Saving is unavailable in this browser session."); session.publish("campaign.save.failed", { message: error.message }); } } }); session.subscribe((result) => { if (!result.accepted && !result.system) return; audio.playEvents(result.events); result.state.log = projectLogEvents(result.state.log, result.events); const feedback = projectFloatingFeedback(result.events); if (feedback.length) { setFloatingFeedback((current) => [...current, ...feedback].slice(-24)); for (const effect of feedback) { const timer = setTimeout(() => { setFloatingFeedback((current) => removeFloatingFeedback(current, effect.id)); floatingTimers.current.delete(effect.id); }, effect.duration); floatingTimers.current.set(effect.id, timer); } } for (const event of result.events) { const facts = event.facts; if ((event.type === "resource.changed" && facts.current > facts.previous) || (event.type === "xp.gained" && facts.current > facts.previous)) { const name = event.type === "xp.gained" ? "xp" : facts.resource; setGains((current) => ({ ...current, [name]: { from: facts.previous, to: facts.current, max: facts.currentMax ?? initial.progression.attributes[name] ?? 100 } })); clearTimeout(gainTimers.current.get(name)); gainTimers.current.set(name, setTimeout(() => setGains((current) => { const next = { ...current }; delete next[name]; return next; }), 420)); } } if (result.events.some((event) => event.type === "player.died")) { returnToMainMenu(); return; } setCampaign(result.state); }); sessionRef.current = session; setSlot(id); setCampaign(initial); };
+  const [mapFixError, setMapFixError] = useState("");
+  const importRepairMap = async (file) => {
+    if (!file || !campaign || !urlOptions.mapFix) return;
+    try { const repaired = floorFromTiledRepairMap(JSON.parse(await file.text()), campaign.floor); begin(slot ?? urlOptions.slot ?? "1", repaired); setMapFixError(""); }
+    catch (error) { setMapFixError(error.message); }
+  };
+  const directSlotStarted = useRef(false);
+  useEffect(() => { if (!urlOptions.slot || directSlotStarted.current) return; directSlotStarted.current = true; begin(urlOptions.slot); }, [urlOptions.slot]);
+  const urlRepairLoaded = useRef(false);
+  useEffect(() => {
+    if (!urlOptions.mapFix || !urlOptions.map || !campaign || urlRepairLoaded.current) return;
+    urlRepairLoaded.current = true;
+    fetch(urlOptions.map).then((response) => { if (!response.ok) throw new Error(`Could not load repaired map (${response.status}).`); return response.json(); }).then((map) => {
+      const repaired = floorFromTiledRepairMap(map, campaign.floor); begin(slot ?? urlOptions.slot ?? "1", repaired); setMapFixError("");
+    }).catch((error) => setMapFixError(error.message));
+  }, [campaign, slot, urlOptions.map, urlOptions.mapFix, urlOptions.slot]);
+  const newGameLabel = randomSeed === null ? "New Game" : `New Game · Seed ${randomSeed}`;
+  if (!campaign) return <main className="saved_games"><h1>Dungeon Roguelite (DR)</h1><h2>3 Saved Games</h2>{summaries.map((entry) => <button key={entry.slot} disabled={entry.invalid} onClick={() => begin(entry.slot)}><b>Saved Game {entry.slot}</b><span>{entry.invalid ? "Unavailable" : entry.occupied ? "Level " + String(entry.level).padStart(2, "0") + " · XP " + String(entry.xpLevel).padStart(2, "0") : newGameLabel}</span></button>)}{saveError && <p role="alert">{saveError}</p>}</main>;
   return <GameScreen orientation={orientation} onPointerDown={handlePointerDown}>
     <TitleBar campaign={campaign} preferences={preferences} setPreference={setPreference} onFullscreen={toggleFullscreen} onSettings={() => setSettings(true)} fullscreenActual={fullscreenActual} />
+    {urlOptions.mapFix && <MapFixControls campaign={campaign} slot={slot} onImport={importRepairMap} error={mapFixError} />}
     <section className="desk_middle"><section className="game_view"><BabylonWorld campaign={campaign} zoom={preferences.zoom} camera={preferences.camera} mouseInteraction floatingFeedback={floatingFeedback} selectedCell={selectedGridSpot} selectedCellReachable={selectedCellReachable} onSelectedCellChange={setSelectedGridSpot} onZoom={stepZoom} /></section><div className="desktop_info"><SecondaryInfoPanel campaign={campaign} /><PrimaryInfoPanel campaign={campaign} dispatch={dispatch} preview={preview} gains={gains} drag={dragPresentation} /></div></section>
     <StatusBar canOverride={canOverride} orientation={orientation} setDeveloperAspect={setDeveloperAspect} mobilePanel={mobilePanel} setMobilePanel={setMobilePanel} />
     <section className="mobile_bottom"><MobileControlPanel campaign={campaign} dispatch={dispatch} hidden={mobilePanel !== "controls"} /><div className="mobile_info" hidden={mobilePanel !== "info"}><SecondaryInfoPanel campaign={campaign} /><PrimaryInfoPanel campaign={campaign} dispatch={dispatch} preview={preview} gains={gains} drag={dragPresentation} /></div></section>

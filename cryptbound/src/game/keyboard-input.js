@@ -14,6 +14,12 @@ export function getMoveRepeatDelay(sprint) {
   return sprint ? SPRINT_REPEAT_DELAY : WALK_REPEAT_DELAY;
 }
 
+// A modifier added during an already-held movement should use its repeat cadence,
+// rather than making the player wait through another initial-held-key delay.
+export function getMoveScheduleDelay(sprint, continuing = false) {
+  return continuing ? getMoveRepeatDelay(sprint) : getMoveInitialDelay(sprint);
+}
+
 export function getMovementKey(event) {
   const code = MOVEMENT_CODES[event.code] ? event.code : event.key === "w" || event.key === "W" ? "KeyW" : event.key === "a" || event.key === "A" ? "KeyA" : event.key === "s" || event.key === "S" ? "KeyS" : event.key === "d" || event.key === "D" ? "KeyD" : event.key === "ArrowUp" ? "ArrowUp" : event.key === "ArrowLeft" ? "ArrowLeft" : event.key === "ArrowDown" ? "ArrowDown" : event.key === "ArrowRight" ? "ArrowRight" : null;
   return code ? { code, direction: MOVEMENT_CODES[code] } : null;
