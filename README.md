@@ -20,6 +20,16 @@ Use assets formatted for Tiled. I'll provide folders to copy from and use for th
 
 - [Play Cryptbound](https://samuelasherrivello.github.io/babylon-lite-dungeon-crawl/)
 
+## Images
+
+<a href="cryptbound/documentation/screenshot01.png"><img src="cryptbound/documentation/screenshot01.png" width="640" alt="Cryptbound dungeon gameplay with the player exploring a procedural crypt" /></a>
+
+## Table of Contents
+
+1. [Getting Started](#getting-started)
+2. [Project Details](#project-details)
+3. [Credits](#credits)
+
 ## Getting Started
 
 1. Install Node.js and run `npm install` from the repository root.
@@ -55,3 +65,8 @@ Every accepted move advances Time by one and gives enemies one action. Blocked m
 ## Release
 
 The project uses the repository's GitHub Pages and Release workflows. Build and verify the project before pushing to `main`; run the Release workflow to bump the version and publish a tagged release.
+
+## Credits
+
+- Samuel Asher Rivello - Over 25 years of game development XP (2026)
+- Provided as-is under the [MIT License](LICENSE).
