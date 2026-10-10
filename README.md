@@ -1,6 +1,6 @@
-# Cryptbound
+# Rogue's Dungeon
 
-Cryptbound is a single-player medieval dungeon roguelite. Explore a procedural crypt one grid step at a time, fight between turns, gather equipment, and carry permanent character growth into each new descent.
+Rogue's Dungeon is a single-player medieval dungeon roguelite. Explore a procedural crypt one grid step at a time, fight between turns, gather equipment, and carry permanent character growth into each new descent.
 
 ## Original AI Prompt
 
@@ -18,11 +18,11 @@ Use assets formatted for Tiled. I'll provide folders to copy from and use for th
 
 ## Live Demo
 
-- [Play Cryptbound](https://samuelasherrivello.github.io/babylon-lite-dungeon-crawl/)
+- [Play Rogue's Dungeon](https://samuelasherrivello.github.io/babylon-lite-rogues-dungeon/)
 
 ## Images
 
-<a href="cryptbound/documentation/screenshot01.png"><img src="cryptbound/documentation/screenshot01.png" width="640" alt="Cryptbound dungeon gameplay with the player exploring a procedural crypt" /></a>
+<a href="rogues-dungeon/documentation/screenshot01.png"><img src="rogues-dungeon/documentation/screenshot01.png" width="640" alt="Rogue's Dungeon gameplay with the player exploring a procedural crypt" /></a>
 
 ## Table of Contents
 
@@ -33,8 +33,8 @@ Use assets formatted for Tiled. I'll provide folders to copy from and use for th
 ## Getting Started
 
 1. Install Node.js and run `npm install` from the repository root.
-2. Run `npm run dev` and open the localhost URL Vite prints, or run `npm run dev:open` to launch a silent browser session for testing (`?mute=1`).
-3. Run `npm run build` to create the production site in `cryptbound/dist/`.
+2. Use the `ai-skills-project-run-start` skill to start the local server. It selects an available port and returns the silent test URL (`?mute=1`).
+3. Run `npm run build` to create the production site in `rogues-dungeon/dist/`.
 
 ## URL Arguments
 
@@ -55,12 +55,12 @@ Every accepted move advances Time by one and gives enemies one action. Blocked m
 
 ## Project Details
 
-- `cryptbound/src/game/` contains dungeon generation, turn rules, progression, and local save-slot logic.
-- `cryptbound/src/content/` and `cryptbound/src/ui/` contain the game surface and viewport UI.
-- `cryptbound/public/assets/` contains supplied Tiled-compatible pixel art and sample maps.
-- `openspec/changes/build-cryptbound-roguelite/` contains the active implementation proposal, specs, design, and task list.
-- [`cryptbound/documentation/original-prompt.md`](cryptbound/documentation/original-prompt.md) records the original game request and clarifications.
-- [`cryptbound/documentation/asset-provenance.md`](cryptbound/documentation/asset-provenance.md) records artwork origin and license status.
+- `rogues-dungeon/src/game/` contains dungeon generation, turn rules, progression, and local save-slot logic.
+- `rogues-dungeon/src/content/` and `rogues-dungeon/src/ui/` contain the game surface and viewport UI.
+- `rogues-dungeon/public/assets/` contains supplied Tiled-compatible pixel art and sample maps.
+- `openspec/changes/rename-to-rogues-dungeon/` contains the active rename proposal, design, and task list.
+- [`rogues-dungeon/documentation/original-prompt.md`](rogues-dungeon/documentation/original-prompt.md) records the original game request and clarifications.
+- [`rogues-dungeon/documentation/asset-provenance.md`](rogues-dungeon/documentation/asset-provenance.md) records artwork origin and license status.
 
 ## Release
 

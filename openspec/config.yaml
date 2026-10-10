@@ -1,9 +1,9 @@
 schema: spec-driven
 context: |
-  Project: Cryptbound, a single-player 2D medieval endless dungeon roguelite.
+  Project: Rogue's Dungeon, a single-player 2D medieval endless dungeon roguelite.
   This is a new GitHub repository created from the current main branch of
   SamuelAsherRivello/github-repository-template. The app folder will be
-  cryptbound/ and the Vite/npm project root remains the repository root.
+  rogues-dungeon/ and the Vite/npm project root remains the repository root.
   Use React 19, Vite 8, and Babylon Lite 1.32.0 with WebGPU only. Do not add a
   fallback renderer. All 2D rendering follows the template's Pixel Perfect
   policy; the world uses 32x32 Tiled pixel art, nearest filtering, and native
@@ -45,7 +45,7 @@ context: |
   whether browser evidence is needed without launching it; apply runs one
   focused check after the related implementation group; finalization runs the
   full applicable suite and reports unavailable required browser capabilities.
-  Browser sessions for Cryptbound include ?mute=1. Keep pure logic in the
+  Browser sessions for Rogue's Dungeon include ?mute=1. Keep pure logic in the
   focused Node tests and do not change generated OpenSpec skills.
 rules:
   proposal:

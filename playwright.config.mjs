@@ -2,11 +2,11 @@ import { defineConfig, devices } from "@playwright/test";
 
 const host = "127.0.0.1";
 const port = 4173;
-const basePath = "/babylon-lite-dungeon-crawl/";
+const basePath = "/babylon-lite-rogues-dungeon/";
 const baseURL = `http://${host}:${port}${basePath}`;
 
 export default defineConfig({
-  testDir: "./cryptbound/test/browser",
+  testDir: "./rogues-dungeon/test/browser",
   outputDir: "test-results",
   fullyParallel: true,
   forbidOnly: Boolean(process.env.CI),

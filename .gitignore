@@ -2,7 +2,7 @@
 
 # Node and Vite output.
 node_modules/
-/cryptbound/dist/
+/rogues-dungeon/dist/
 
 # Local configuration. Commit examples only, never credentials.
 .env
@@ -16,5 +16,5 @@ node_modules/
 
 # Local WebGPU preview captures and browser profile.
 /.preview-profile/
-/cryptbound-preview.png
-/cryptbound-game-preview.png
+/rogues-dungeon-preview.png
+/rogues-dungeon-game-preview.png

@@ -38,7 +38,7 @@ jobs:
       - name: Prepare demo artifact
         run: |
           mkdir -p _site
-          cp -R cryptbound/dist/. _site/
+          cp -R rogues-dungeon/dist/. _site/
           cp version.txt _site/version.txt
       - name: Upload demo
         uses: actions/upload-pages-artifact@v3
